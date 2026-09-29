@@ -1,0 +1,43 @@
+{% extends 'boutique/base.html' %}
+{% block title %}Livraison & paiement — Yorwani{% endblock %}
+{% block content %}
+<section class="page-intro compact-intro"><span class="eyebrow">DERNIÈRE ÉTAPE</span><h1>Votre commande</h1></section>
+<section class="section checkout-section">
+  <form method="post" class="checkout-layout">
+    {% csrf_token %}
+    <div class="checkout-fields">
+      <div class="checkout-step"><span class="step-number">01</span><div><span class="eyebrow">LIVRAISON</span><h2>Où vous retrouver ?</h2></div></div>
+      <div class="form-grid">
+        <label>Nom complet<input value="{{ user.first_name }} {{ user.last_name }}" readonly></label>
+        <label>Adresse e-mail<input value="{{ user.email }}" readonly></label>
+        <label>Téléphone *<input type="tel" name="phone" required autocomplete="tel" value="{{ request.POST.phone|default:user.phone }}" placeholder="0700000000"></label>
+        <label>Ville / commune *<input name="city" required autocomplete="address-level2" value="{{ request.POST.city|default:'' }}" placeholder="Cocody, Abidjan"></label>
+        <label class="wide-field">Adresse de livraison *<input name="address" required autocomplete="street-address" value="{{ request.POST.address|default:'' }}" placeholder="Rue, quartier, repère"></label>
+        <label class="wide-field">Indication complémentaire<textarea name="delivery_note" rows="3" placeholder="Un repère utile pour le livreur">{{ request.POST.delivery_note|default:'' }}</textarea></label>
+      </div>
+      <div class="checkout-step payment-step"><span class="step-number">02</span><div><span class="eyebrow">MODE DE PAIEMENT</span><h2>Choisissez comment régler.</h2></div></div>
+      <fieldset class="payment-method-options">
+        <legend class="visually-hidden">Mode de paiement</legend>
+        <label class="payment-choice">
+          <input type="radio" name="payment_method" value="wave" {% if request.POST.payment_method != 'cash_on_delivery' %}checked{% endif %} required>
+          <span class="payment-choice-copy"><strong>Wave maintenant</strong><small>Réglez par transfert. La commande sera confirmée après vérification.</small></span>
+          <span class="payment-choice-mark" aria-hidden="true"></span>
+        </label>
+        <label class="payment-choice">
+          <input type="radio" name="payment_method" value="cash_on_delivery" {% if request.POST.payment_method == 'cash_on_delivery' %}checked{% endif %} required>
+          <span class="payment-choice-copy"><strong>Paiement à la livraison</strong><small>Réglez le montant au livreur lors de la réception.</small></span>
+          <span class="payment-choice-mark" aria-hidden="true"></span>
+        </label>
+      </fieldset>
+    </div>
+    <aside class="cart-summary checkout-summary">
+      <span class="eyebrow">VOTRE COMMANDE</span>
+      {% for line in lines %}<div class="checkout-item"><span>{{ line.quantity }} × {{ line.product.name }}{% if line.size %}<small> · {{ line.size }}</small>{% endif %}</span><strong>{{ line.line_total|floatformat:0 }}</strong></div>{% endfor %}
+      <div class="summary-row"><span>Sous-total</span><strong>{{ subtotal|floatformat:0 }} FCFA</strong></div>
+      <p class="summary-note">Frais de livraison à confirmer selon votre adresse.</p>
+      <button class="button button-dark full-button" type="submit">Créer ma commande <span>↗</span></button>
+      <p class="secure-note">Vos informations sont utilisées uniquement pour cette commande.</p>
+    </aside>
+  </form>
+</section>
+{% endblock %}

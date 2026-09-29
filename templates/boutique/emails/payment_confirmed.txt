@@ -1,0 +1,18 @@
+Bonjour {{ order.customer_name }},
+
+Nous avons confirmé la réception de votre paiement ({{ order.get_payment_method_display }}) pour la commande {{ order.reference }}.
+Votre commande Yorwani est maintenant confirmée.
+
+{% if order.payment_method == 'wave' %}
+La livraison est estimée sous 5 jours à compter de cette confirmation, à l’adresse suivante :
+{{ order.address }}, {{ order.city }}
+{% else %}
+Le règlement a été reçu à la livraison.
+{% endif %}
+
+Total réglé : {{ order.total|floatformat:0 }} FCFA
+
+Votre reçu est disponible dans votre espace client : {{ order.reference }}.
+
+Merci pour votre confiance,
+La maison Yorwani

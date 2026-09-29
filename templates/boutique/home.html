@@ -1,0 +1,18 @@
+{% extends 'boutique/base.html' %}
+{% block title %}Yorwani — L’élégance, en mouvement{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="hero-photo" role="img" aria-label="Silhouette de la collection Yorwani"></div>
+  <div class="hero-shade"></div>
+  <div class="hero-content"><span class="eyebrow light">COLLECTION 2026 · ABIDJAN</span><h1>L’élégance,<br>en mouvement.</h1><p>Des pièces choisies avec intention.<br>Un style qui vous appartient.</p><a class="button button-gold" href="{% url 'catalogue' %}">Découvrir la collection <span aria-hidden="true">↗</span></a></div>
+  <span class="hero-index">01 — 03</span>
+  <a class="hero-scroll" href="#selection">DÉFILER <span></span></a>
+</section>
+<section class="intro-band"><span class="eyebrow">LA MAISON YORWANI</span><p>Le raffinement n’est pas une occasion.<br><em>C’est une manière d’être.</em></p><span class="gold-rule"></span></section>
+<section class="section collection-section" id="selection">
+  <div class="section-heading"><div><span class="eyebrow">CHOISIES POUR VOUS</span><h2>La sélection</h2></div><a class="text-link" href="{% url 'catalogue' %}">Toute la collection <span>↗</span></a></div>
+  {% if featured %}<div class="product-grid">{% for product in featured %}{% include 'boutique/_product_card.html' %}{% endfor %}</div>{% else %}<div class="empty-products"><span class="eyebrow">BIENTÔT</span><p>Les premières pièces Yorwani se préparent.</p><span>De belles choses prennent le temps qu’il faut.</span></div>{% endif %}
+</section>
+<section class="category-band"><div class="category-copy"><span class="eyebrow light">UN STYLE, PLUSIEURS EXPRESSIONS</span><h2>Votre allure.<br>Vos règles.</h2><a class="button button-outline" href="{% url 'catalogue' %}">Explorer toutes les pièces <span>↗</span></a></div><div class="category-list">{% for category in categories %}<a class="category-item" href="{% url 'catalogue' %}?categorie={{ category.slug }}"><span class="category-number">0{{ forloop.counter|stringformat:'d' }}</span><span>{{ category.name }}</span><span class="category-arrow">↗</span></a>{% empty %}<a class="category-item" href="{% url 'catalogue' %}"><span class="category-number">01</span><span>Vêtements & accessoires</span><span class="category-arrow">↗</span></a>{% endfor %}</div></section>
+<section class="quote-band"><span class="eyebrow">LE MOT DE LA MAISON</span><p>« La pièce juste ne vous transforme pas.<br>Elle révèle ce qui était déjà là. »</p><span class="quote-signature">Yorwani</span></section>
+{% endblock %}

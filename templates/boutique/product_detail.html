@@ -1,0 +1,16 @@
+{% extends 'boutique/base.html' %}
+{% block title %}{{ product.name }} — Yorwani{% endblock %}
+{% block content %}
+<div class="breadcrumbs"><a href="{% url 'accueil' %}">Accueil</a><span>/</span><a href="{% url 'catalogue' %}">La collection</a><span>/</span><span>{{ product.name }}</span></div>
+<section class="product-detail">
+  <div class="detail-gallery">
+    <div class="detail-main-image">{% if product.image %}<img id="main-product-image" src="{{ product.image.url }}" alt="{{ product.name }}">{% elif product.image_url %}<img id="main-product-image" src="{{ product.image_url }}" alt="{{ product.name }}">{% else %}<div class="image-placeholder"><span>Y</span></div>{% endif %}</div>
+    {% if gallery %}<div class="gallery-thumbs">{% for item in gallery %}{% if item.image %}<button type="button" class="gallery-thumb" data-image="{{ item.image.url }}"><img src="{{ item.image.url }}" alt="{{ item.alt_text|default:product.name }}"></button>{% elif item.image_url %}<button type="button" class="gallery-thumb" data-image="{{ item.image_url }}"><img src="{{ item.image_url }}" alt="{{ item.alt_text|default:product.name }}"></button>{% endif %}{% endfor %}</div>{% endif %}
+  </div>
+  <div class="detail-info"><span class="eyebrow">{{ product.category.name|upper }}</span><h1>{{ product.name }}</h1><div class="detail-price">{{ product.price|floatformat:0 }} <span>FCFA</span>{% if product.compare_at_price %}<del>{{ product.compare_at_price|floatformat:0 }} FCFA</del>{% endif %}</div><p class="detail-description">{{ product.description }}</p>
+    {% if product.stock > 0 %}<form class="add-cart-form" action="{% url 'panier_ajouter' %}" method="post">{% csrf_token %}<input type="hidden" name="product_id" value="{{ product.id }}">{% if product.sizes %}<fieldset class="size-fieldset"><legend>Choisir une taille <span>*</span></legend><div class="size-options">{% for size in product.sizes %}<label><input type="radio" name="size" value="{{ size }}" required><span>{{ size }}</span></label>{% endfor %}</div></fieldset>{% endif %}<label class="quantity-label">Quantité <input type="number" name="quantity" value="1" min="1" max="{{ product.stock }}"></label><button class="button button-dark add-cart-button" type="submit">Ajouter au panier <span>↗</span></button><p class="form-feedback" aria-live="polite"></p></form>{% else %}<p class="sold-out">Cette pièce n’est plus disponible pour le moment.</p>{% endif %}
+    <div class="product-accordions">{% if product.material %}<details><summary>Matières</summary><p>{{ product.material }}</p></details>{% endif %}{% if product.care_instructions %}<details><summary>Conseils d’entretien</summary><p>{{ product.care_instructions }}</p></details>{% endif %}<details><summary>Livraison & retours</summary><p>Livraison à Abidjan et dans toute la Côte d’Ivoire. Les détails sont confirmés lors de la commande.</p></details></div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script>document.querySelectorAll('.gallery-thumb').forEach(button=>button.addEventListener('click',()=>{document.getElementById('main-product-image').src=button.dataset.image}));</script>{% endblock %}

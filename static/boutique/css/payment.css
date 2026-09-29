@@ -1,0 +1,65 @@
+.payment-method-options {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 34px 35px;
+  padding: 0;
+  border: 0;
+}
+
+.payment-choice {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 76px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  background: #fbfaf7;
+  cursor: pointer;
+}
+
+.payment-choice:has(input:checked) {
+  border-color: var(--gold);
+  background: #f4f0e6;
+}
+
+.payment-choice input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: #9c7b37;
+  flex: 0 0 auto;
+}
+
+.payment-choice-copy {
+  display: grid;
+  gap: 3px;
+}
+
+.payment-choice-copy strong {
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.payment-choice-copy small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+@media (max-width: 600px) {
+  .payment-method-options {
+    margin-left: 0;
+  }
+}

@@ -1,0 +1,17 @@
+{% extends 'boutique/base.html' %}
+{% block title %}Commande {{ order.reference }} — Yorwani{% endblock %}
+{% block content %}
+<section class="page-intro compact-intro"><span class="eyebrow">COMMANDE {{ order.reference }}</span><h1>Merci, {{ order.customer_name|truncatewords:1 }}.</h1><p>Votre commande est enregistrée. Un e-mail récapitulatif vous sera adressé.</p></section>
+<section class="section order-page"><div class="order-layout">
+  <div class="order-main">
+    <div class="notice-panel"><span class="notice-icon">01</span><div><span class="eyebrow">PAIEMENT À LA LIVRAISON</span><h2>{{ order.total|floatformat:0 }} FCFA à régler au livreur</h2><p>Le paiement sera perçu lors de la remise de votre commande.</p><span class="status-pill">{{ order.get_payment_status_display }}</span></div></div>
+    <div class="notice-panel"><span class="notice-icon">02</span><div><span class="eyebrow">DÉLAI ESTIMÉ</span><p>La livraison est estimée sous 5 jours après votre commande.</p></div></div>
+    <a class="continue-shopping" href="{% url 'historique_commandes' %}">Voir mes commandes</a>
+  </div>
+  <aside class="cart-summary order-summary"><span class="eyebrow">RÉCAPITULATIF</span>
+    {% for item in order.items.all %}<div class="checkout-item"><span>{{ item.quantity }} × {{ item.product_name }}{% if item.size %}<small> · {{ item.size }}</small>{% endif %}</span><strong>{{ item.line_total|floatformat:0 }}</strong></div>{% endfor %}
+    <div class="summary-row"><span>Total à régler</span><strong>{{ order.total|floatformat:0 }} FCFA</strong></div>
+    <div class="delivery-summary"><span class="eyebrow">ADRESSE DE LIVRAISON</span><p>{{ order.customer_name }}<br>{{ order.phone }}<br>{{ order.address }}<br>{{ order.city }}</p>{% if order.delivery_note %}<p>{{ order.delivery_note }}</p>{% endif %}</div>
+  </aside>
+</div></section>
+{% endblock %}

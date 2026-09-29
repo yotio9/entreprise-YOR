@@ -1,0 +1,10 @@
+<article class="product-card">
+  <a class="product-image" href="{% url 'produit' product.slug %}">
+    {% if product.image %}<img src="{{ product.image.url }}" alt="{{ product.name }}" loading="lazy">
+    {% elif product.image_url %}<img src="{{ product.image_url }}" alt="{{ product.name }}" loading="lazy">
+    {% else %}<div class="image-placeholder"><span>Y</span></div>{% endif %}
+    {% if product.is_featured %}<span class="image-tag">SÉLECTION</span>{% endif %}
+  </a>
+  <div class="product-meta"><div><span class="product-category">{{ product.category.name }}</span><h3><a href="{% url 'produit' product.slug %}">{{ product.name }}</a></h3></div><span class="product-price">{{ product.price|floatformat:0 }} <small>FCFA</small></span></div>
+  {% if product.stock == 0 %}<span class="stock-note">Épuisé</span>{% endif %}
+</article>
