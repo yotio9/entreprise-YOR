@@ -8,12 +8,22 @@ Récapitulatif :
 {% endfor %}
 Total : {{ order.total|floatformat:0 }} FCFA
 
-{% if order.payment_method == 'wave' %}Le paiement Wave est en attente de vérification. Transférez le montant exact au numéro marchand Wave {{ wave_merchant_number }} et indiquez la référence {{ order.reference }} en motif si possible. Nous vous enverrons un second e-mail après vérification du paiement.
-
-La livraison est estimée sous 5 jours après confirmation du paiement, à l’adresse suivante :
-{% else %}Le montant sera à régler au livreur lors de la réception. La livraison est estimée sous 5 jours après votre commande, à l’adresse suivante :
+{% if order.payment_method == 'wave' %}
+{% if order.wave_launch_url %}Le paiement Wave est en attente. Réglez le montant exact de {{ order.total|floatformat:0 }} FCFA avec ce lien :
+{{ order.wave_launch_url }}
+{% if order.wave_checkout_id %}Wave confirmera le paiement automatiquement par e-mail.{% else %}Notre équipe vérifiera la réception et vous enverra la confirmation.{% endif %}
+{% else %}Le lien de paiement Wave vous sera envoyé par e-mail dès qu’il sera prêt.{% endif %}
+Après confirmation du paiement, votre commande sera expédiée sous 5 jours.
+Adresse de livraison :
+{% else %}
+Le montant sera à régler au livreur lors de la réception. La livraison est estimée sous 5 jours après votre commande, à l’adresse suivante :
 {% endif %}
 {{ order.address }}, {{ order.city }}
+
+Suivre votre commande :
+Boutique Yorwani : {{ store_url }}
+Voir cette commande : {{ order_url }}
+Espace de vos commandes : {{ orders_url }}
 
 Merci pour votre confiance,
 La maison Yorwani

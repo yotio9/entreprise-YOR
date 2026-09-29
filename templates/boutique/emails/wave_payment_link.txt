@@ -1,0 +1,13 @@
+Bonjour {{ order.customer_name }},
+
+Vous pouvez régler votre commande Yorwani {{ order.reference }} par Wave.
+
+Montant : {{ order.total|floatformat:0 }} FCFA
+Lien de paiement : {{ order.wave_launch_url|safe }}
+
+Nous vous enverrons un e-mail de confirmation après vérification de la réception du paiement.
+
+Voir le détail de la commande : {{ order_url|safe }}
+
+Merci pour votre confiance,
+La maison Yorwani

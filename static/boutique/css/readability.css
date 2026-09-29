@@ -1,0 +1,60 @@
+body {
+  font-size: 20px;
+  line-height: 1.7;
+}
+
+.announcement {
+  font-size: 14px;
+}
+
+.main-nav a,
+.account-link,
+.bag-link {
+  font-size: 17px;
+  letter-spacing: 0;
+}
+
+.eyebrow {
+  font-size: 14px;
+  letter-spacing: 1.4px;
+}
+
+.button,
+.order-history form .signout-button {
+  font-size: 16px;
+  letter-spacing: 0.3px;
+}
+
+.message {
+  font-size: 18px;
+  line-height: 1.6;
+}
+
+.hero-content p,
+.intro-band p,
+.quote-band p {
+  font-size: 20px;
+}
+
+.payment-choice-copy small,
+small {
+  font-size: 17px;
+}
+
+input,
+select,
+textarea {
+  font-size: 19px;
+}
+
+@media (max-width: 600px) {
+  body {
+    font-size: 20px;
+  }
+
+  .main-nav a,
+  .account-link,
+  .bag-link {
+    font-size: 16px;
+  }
+}

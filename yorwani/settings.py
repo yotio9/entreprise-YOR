@@ -132,6 +132,10 @@ LOGOUT_REDIRECT_URL = 'accueil'
 
 WAVE_MERCHANT_NUMBER = os.environ.get('WAVE_MERCHANT_NUMBER', '0171373056')
 WAVE_QR_IMAGE = os.environ.get('WAVE_QR_IMAGE', '')
+WAVE_PAYMENT_LINK_BASE = os.environ.get('WAVE_PAYMENT_LINK_BASE', '')
+WAVE_API_KEY = os.environ.get('WAVE_API_KEY', '')
+WAVE_WEBHOOK_SECRET = os.environ.get('WAVE_WEBHOOK_SECRET', '')
+WAVE_SITE_URL = os.environ.get('WAVE_SITE_URL', '').rstrip('/')
 BRAND_LOGO_URL = os.environ.get('BRAND_LOGO_URL', '')
 
 EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND') or (
@@ -146,6 +150,7 @@ EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 EMAIL_TIMEOUT = int(os.environ.get('EMAIL_TIMEOUT', '10'))
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL') or EMAIL_HOST_USER or 'Yorwani <boutique@yorwani.com>'
+ORDER_NOTIFICATION_EMAIL = os.environ.get('ORDER_NOTIFICATION_EMAIL', 'yorwani397@gmail.com')
 
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = False

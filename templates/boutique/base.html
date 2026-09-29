@@ -7,19 +7,23 @@
   <meta name="theme-color" content="#11110f">
   <meta name="description" content="Yorwani, maison de mode contemporaine. Des silhouettes choisies, pensées pour durer.">
   <title>{% block title %}Yorwani — Maison de mode{% endblock %}</title>
+  <link rel="icon" type="image/png" sizes="512x512" href="{% static 'boutique/img/favicon.png' %}">
+  <link rel="apple-touch-icon" href="{% static 'boutique/img/favicon.png' %}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'boutique/css/site.css' %}">
   <link rel="stylesheet" href="{% static 'boutique/css/account.css' %}">
   <link rel="stylesheet" href="{% static 'boutique/css/payment.css' %}">
+  <link rel="stylesheet" href="{% static 'boutique/css/readability.css' %}">
+  <link rel="stylesheet" href="{% static 'boutique/css/brand-assets.css' %}">
   {% block extra_head %}{% endblock %}
 </head>
 <body>
   <div class="announcement">La nouvelle collection est arrivée <span>·</span> Livraison à Abidjan</div>
   <header class="site-header">
     <a class="brand" href="{% url 'accueil' %}" aria-label="Yorwani, accueil">
-      {% if BRAND_LOGO_URL %}<img src="{{ BRAND_LOGO_URL }}" alt="Yorwani">{% else %}<span class="brand-word">YORWANI</span><span class="brand-caption">MAISON DE MODE</span>{% endif %}
+      <img src="{% if BRAND_LOGO_URL %}{{ BRAND_LOGO_URL }}{% else %}{% static 'boutique/img/logo-nom-transparent.png' %}{% endif %}" alt="Yorwani">
     </a>
     <nav class="main-nav" aria-label="Navigation principale">
       <a href="{% url 'catalogue' %}">La collection</a>
@@ -37,7 +41,7 @@
   <main>{% block content %}{% endblock %}</main>
   <footer class="site-footer" id="maison">
     <div class="footer-main">
-      <div class="footer-brand"><span class="brand-word">YORWANI</span><p>Une allure. Une intention.<br>Une maison qui vous ressemble.</p></div>
+      <div class="footer-brand"><img class="footer-brand-logo" src="{% static 'boutique/img/logo-entier-transparent.png' %}" alt="Yorwani, maison de mode"><p>Une allure. Une intention.<br>Une maison qui vous ressemble.</p></div>
       <div class="footer-links"><span class="eyebrow">EXPLORER</span><a href="{% url 'catalogue' %}">La collection</a><a href="{% url 'historique_commandes' %}">Suivre ma commande</a><a href="mailto:bonjour@yorwani.com">Nous contacter</a></div>
       <div class="footer-links"><span class="eyebrow">LA MAISON</span><span>Abidjan, Côte d’Ivoire</span><span>Du lundi au samedi</span><span>Wave · Paiement sécurisé</span></div>
     </div>

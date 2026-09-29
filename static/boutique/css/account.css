@@ -3,7 +3,7 @@
   overflow: hidden;
   color: #8f7135;
   font-family: 'Cormorant Garamond', var(--serif), serif;
-  font-size: 20px !important;
+  font-size: 24px !important;
   font-weight: 500;
   letter-spacing: 0 !important;
   text-overflow: ellipsis;
@@ -20,7 +20,7 @@
   border: 1px solid #c9a45c;
   background: #c9a45c;
   color: #171612;
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 1px;
   text-decoration: none;
@@ -42,6 +42,6 @@
 @media (max-width: 600px) {
   .account-name {
     max-width: 128px;
-    font-size: 17px !important;
+    font-size: 21px !important;
   }
 }

@@ -1,0 +1,25 @@
+.brand img {
+  display: block;
+  width: 220px;
+  max-height: 64px;
+  object-fit: contain;
+}
+
+.footer-brand-logo {
+  display: block;
+  width: 148px;
+  max-height: 112px;
+  object-fit: contain;
+  object-position: left center;
+}
+
+@media (max-width: 600px) {
+  .brand img {
+    width: 170px;
+    max-height: 48px;
+  }
+
+  .footer-brand-logo {
+    width: 128px;
+  }
+}

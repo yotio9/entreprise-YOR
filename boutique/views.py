@@ -1,19 +1,31 @@
 from decimal import Decimal
+import hashlib
+import hmac
+import json
 import logging
+import time
+from urllib.parse import urlparse
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Sum
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from .forms import EmailAuthenticationForm, ProductForm, RegistrationForm
 from .models import Category, Order, OrderItem, Product, ProductImage
-from .notifications import send_order_received_email, send_payment_confirmed_email
+from .notifications import (
+	send_new_order_notification_email,
+	send_order_received_email,
+	send_payment_confirmed_email,
+	send_wave_payment_link_email,
+)
+from .wave import WaveCheckoutError, create_checkout_session, create_merchant_payment_link
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +212,25 @@ def checkout(request):
 				product = current_products[product_id]
 				product.stock -= quantity
 				product.save(update_fields=['stock', 'updated_at'])
-		email_sent = send_order_received_email(order)
+		wave_launch_url = ''
+		if payment_method == Order.PaymentMethod.WAVE and (settings.WAVE_API_KEY or settings.WAVE_PAYMENT_LINK_BASE):
+			try:
+				if settings.WAVE_API_KEY:
+					wave_session = create_checkout_session(order)
+					order.wave_checkout_id = wave_session['id']
+					order.wave_launch_url = wave_session['wave_launch_url']
+					order.save(update_fields=['wave_checkout_id', 'wave_launch_url'])
+				else:
+					order.wave_launch_url = create_merchant_payment_link(settings.WAVE_PAYMENT_LINK_BASE, order.total)
+					order.save(update_fields=['wave_launch_url'])
+				wave_launch_url = order.wave_launch_url
+			except WaveCheckoutError:
+				logger.exception('Could not create Wave checkout for order %s', order.reference)
+				messages.warning(request, 'Le paiement Wave dans l’application est momentanément indisponible. Les instructions de transfert restent affichées.')
+		email_sent = send_order_received_email(order, request=request)
+		store_email_sent = send_new_order_notification_email(order, request=request)
+		if not store_email_sent:
+			logger.warning('Order %s was created but the store notification email failed', order.reference)
 		if email_sent and 'console.EmailBackend' not in settings.EMAIL_BACKEND:
 			messages.success(request, f'Commande reçue. Un e-mail de confirmation vient d’être envoyé à {order.customer_email}.')
 		elif email_sent:
@@ -225,6 +255,8 @@ def order_detail(request, reference):
 		raise Http404
 	if order.payment_method == Order.PaymentMethod.CASH_ON_DELIVERY:
 		return render(request, 'boutique/order_detail_delivery.html', {'order': order})
+	if order.wave_launch_url:
+		return render(request, 'boutique/order_detail_wave_checkout.html', {'order': order})
 	return render(request, 'boutique/order_detail.html', {'order': order})
 
 
@@ -282,6 +314,35 @@ def dashboard(request):
 		'recent_orders': Order.objects.select_related('user')[:6],
 	}
 	return render(request, 'boutique/admin_dashboard.html', context)
+
+
+@admin_required
+def admin_accounting(request):
+	active_orders = Order.objects.exclude(status=Order.Status.CANCELLED)
+	paid_orders = active_orders.filter(payment_status=Order.PaymentStatus.CONFIRMED)
+	wave_pending_orders = active_orders.filter(
+		payment_method=Order.PaymentMethod.WAVE,
+		payment_status=Order.PaymentStatus.PENDING,
+	)
+	cash_due_orders = active_orders.filter(
+		payment_method=Order.PaymentMethod.CASH_ON_DELIVERY,
+		payment_status=Order.PaymentStatus.DUE_ON_DELIVERY,
+	)
+	open_orders = (wave_pending_orders | cash_due_orders).select_related('user').order_by('-created_at')
+
+	def total_for(orders):
+		totals = orders.aggregate(subtotal=Sum('subtotal'), shipping=Sum('shipping_fee'))
+		return (totals['subtotal'] or Decimal('0.00')) + (totals['shipping'] or Decimal('0.00'))
+
+	context = {
+		'received_total': total_for(paid_orders),
+		'wave_pending_total': total_for(wave_pending_orders),
+		'cash_due_total': total_for(cash_due_orders),
+		'not_received_total': total_for(open_orders),
+		'received_count': paid_orders.count(),
+		'open_orders': open_orders,
+	}
+	return render(request, 'boutique/admin_accounting.html', context)
 
 
 @admin_required
@@ -349,6 +410,29 @@ def admin_order_detail(request, reference):
 
 @admin_required
 @require_POST
+def send_wave_payment_link(request, reference):
+	order = get_object_or_404(Order, reference=reference)
+	if order.payment_method != Order.PaymentMethod.WAVE:
+		messages.error(request, 'Cette commande n’utilise pas Wave comme mode de paiement.')
+	elif order.payment_status == Order.PaymentStatus.CONFIRMED or order.status == Order.Status.CANCELLED:
+		messages.error(request, 'Cette commande ne peut plus recevoir de lien de paiement.')
+	else:
+		payment_url = request.POST.get('wave_payment_url', '').strip()
+		parsed_url = urlparse(payment_url)
+		if parsed_url.scheme != 'https' or parsed_url.hostname != 'pay.wave.com' or not parsed_url.path.startswith(('/m/', '/c/')):
+			messages.error(request, 'Collez un lien Wave sécurisé commençant par https://pay.wave.com/.')
+		else:
+			order.wave_launch_url = payment_url
+			order.save(update_fields=['wave_launch_url'])
+			if send_wave_payment_link_email(order, request=request):
+				messages.success(request, f'Le lien de paiement Wave a été envoyé à {order.customer_email}.')
+			else:
+				messages.warning(request, 'Le lien est enregistré, mais le courriel n’a pas pu être envoyé.')
+	return redirect('admin_commande_detail', reference=reference)
+
+
+@admin_required
+@require_POST
 def confirm_payment(request, reference):
 	order = get_object_or_404(Order, reference=reference)
 	if order.status == Order.Status.CANCELLED:
@@ -380,3 +464,65 @@ def confirm_payment(request, reference):
 	else:
 		messages.error(request, 'Le statut du paiement ne correspond pas au mode de règlement de cette commande.')
 	return redirect('admin_commande_detail', reference=reference)
+
+
+def _valid_wave_webhook_signature(secret, signature_header, raw_body):
+	parts = {}
+	for item in signature_header.split(','):
+		key, separator, value = item.strip().partition('=')
+		if separator:
+			parts.setdefault(key, []).append(value)
+	try:
+		timestamp = int(parts['t'][0])
+		current_time = time.time()
+	except (KeyError, IndexError, ValueError):
+		return False
+	if timestamp < current_time - 300 or timestamp > current_time + 30:
+		return False
+	expected = hmac.new(secret.encode(), str(timestamp).encode() + raw_body, hashlib.sha256).hexdigest()
+	return any(hmac.compare_digest(expected, value) for value in parts.get('v1', []))
+
+
+@csrf_exempt
+@require_POST
+def wave_webhook(request):
+	secret = settings.WAVE_WEBHOOK_SECRET
+	if not secret:
+		return HttpResponse(status=503)
+	if not _valid_wave_webhook_signature(secret, request.headers.get('Wave-Signature', ''), request.body):
+		return HttpResponse(status=401)
+	try:
+		event = json.loads(request.body)
+	except (json.JSONDecodeError, UnicodeDecodeError):
+		return HttpResponse(status=400)
+	if event.get('type') != 'checkout.session.completed':
+		return JsonResponse({'received': True})
+
+	data = event.get('data') or {}
+	if data.get('payment_status') != 'succeeded' or data.get('checkout_status') != 'complete':
+		return JsonResponse({'received': True})
+	try:
+		paid_amount = Decimal(str(data.get('amount')))
+	except Exception:
+		return HttpResponse(status=400)
+	if data.get('currency') != 'XOF':
+		return HttpResponse(status=400)
+
+	with transaction.atomic():
+		order = Order.objects.select_for_update().filter(wave_checkout_id=data.get('id')).first()
+		if not order:
+			return JsonResponse({'received': True})
+		if paid_amount != order.total or order.payment_method != Order.PaymentMethod.WAVE:
+			return HttpResponse(status=400)
+		if order.payment_status == Order.PaymentStatus.CONFIRMED:
+			return JsonResponse({'received': True})
+		if order.payment_status != Order.PaymentStatus.PENDING or order.status == Order.Status.CANCELLED:
+			return HttpResponse(status=409)
+		order.payment_status = Order.PaymentStatus.CONFIRMED
+		order.status = Order.Status.CONFIRMED
+		order.wave_transaction_id = str(data.get('transaction_id', ''))
+		order.save(update_fields=['payment_status', 'status', 'wave_transaction_id'])
+
+	if not send_payment_confirmed_email(order):
+		logger.error('Payment confirmed by Wave but customer email failed for order %s', order.reference)
+	return JsonResponse({'received': True})

@@ -20,7 +20,7 @@
         <legend class="visually-hidden">Mode de paiement</legend>
         <label class="payment-choice">
           <input type="radio" name="payment_method" value="wave" {% if request.POST.payment_method != 'cash_on_delivery' %}checked{% endif %} required>
-          <span class="payment-choice-copy"><strong>Wave maintenant</strong><small>Réglez par transfert. La commande sera confirmée après vérification.</small></span>
+          <span class="payment-choice-copy"><strong>Wave par lien e-mail</strong><small>Nous vous enverrons le lien de paiement par e-mail. La commande sera expédiée sous 5 jours après confirmation du paiement.</small></span>
           <span class="payment-choice-mark" aria-hidden="true"></span>
         </label>
         <label class="payment-choice">

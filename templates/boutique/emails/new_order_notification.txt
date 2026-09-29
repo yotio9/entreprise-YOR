@@ -1,0 +1,19 @@
+Nouvelle commande reçue sur la boutique Yorwani.
+
+Commande : {{ order.reference }}
+Date : {{ order.created_at|date:"d/m/Y H:i" }}
+Client : {{ order.customer_name }}
+E-mail : {{ order.customer_email }}
+Téléphone : {{ order.phone }}
+Adresse : {{ order.address }}, {{ order.city }}
+Paiement : {{ order.get_payment_method_display }}
+État du paiement : {{ order.get_payment_status_display }}
+
+Articles :
+{% for item in order.items.all %}- {{ item.quantity }} x {{ item.product_name }}{% if item.size %} (taille {{ item.size }}){% endif %} : {{ item.line_total|floatformat:0 }} FCFA
+{% endfor %}
+Total : {{ order.total|floatformat:0 }} FCFA
+
+Accès privé de gestion :
+Ouvrir cette commande : {{ admin_order_url }}
+Toutes les commandes : {{ admin_orders_url }}

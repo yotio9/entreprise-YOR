@@ -38,13 +38,13 @@
 
 .payment-choice-copy strong {
   font-family: var(--serif);
-  font-size: 17px;
+  font-size: 21px;
   font-weight: 500;
 }
 
 .payment-choice-copy small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 14px;
   line-height: 1.6;
 }
 

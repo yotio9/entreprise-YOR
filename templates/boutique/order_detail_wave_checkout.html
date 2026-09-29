@@ -1,0 +1,56 @@
+{% extends 'boutique/base.html' %}
+{% block title %}Paiement {{ order.reference }} — Yorwani{% endblock %}
+{% block content %}
+<section class="page-intro compact-intro">
+  <span class="eyebrow">COMMANDE {{ order.reference }}</span>
+  <h1>Finalisez votre paiement.</h1>
+  <p>Le montant de {{ order.total|floatformat:0 }} FCFA est associé à cette commande.</p>
+</section>
+<section class="section order-page">
+  <div class="order-layout">
+    <div class="order-main">
+      <div class="notice-panel">
+        <span class="notice-icon">01</span>
+        <div>
+          <span class="eyebrow">PAIEMENT WAVE</span>
+          {% if order.payment_status == 'confirmed' %}
+            <h2>Paiement confirmé</h2>
+            <p>Wave a confirmé la réception de votre paiement. Votre reçu est disponible ci-dessous.</p>
+            <a class="text-link" href="{% url 'recu' order.reference %}" target="_blank" rel="noopener">Ouvrir le reçu ↗</a>
+          {% else %}
+            <h2>{{ order.total|floatformat:0 }} FCFA</h2>
+            <p>Le lien de paiement Wave vous est envoyé par e-mail. Consultez votre boîte de réception pour régler cette commande.</p>
+            {% if order.wave_checkout_id %}<p class="notice-small">La commande sera expédiée sous 5 jours après confirmation du paiement par Wave.</p>{% else %}<p class="notice-small">Après vérification et confirmation du paiement par notre équipe, votre commande sera expédiée sous 5 jours.</p>{% endif %}
+          {% endif %}
+        </div>
+      </div>
+      <div class="notice-panel receipt-panel">
+        <span class="notice-icon">02</span>
+        <div>
+          <span class="eyebrow">SUIVI DE COMMANDE</span>
+          <h2>{{ order.get_status_display }}</h2>
+          {% if order.wave_checkout_id %}<p>Un e-mail de confirmation sera envoyé à {{ order.customer_email }} dès que Wave aura confirmé la transaction.</p>{% else %}<p>Un e-mail de confirmation sera envoyé à {{ order.customer_email }} après vérification du paiement par notre équipe.</p>{% endif %}
+          <a class="text-link" href="{% url 'historique_commandes' %}">Voir mes commandes</a>
+        </div>
+      </div>
+    </div>
+    <aside class="cart-summary order-summary">
+      <span class="eyebrow">RÉCAPITULATIF</span>
+      {% for item in order.items.all %}
+        <div class="checkout-item">
+          <span>{{ item.quantity }} × {{ item.product_name }}{% if item.size %}<small> · {{ item.size }}</small>{% endif %}</span>
+          <strong>{{ item.line_total|floatformat:0 }}</strong>
+        </div>
+      {% endfor %}
+      <div class="summary-row">
+        <span>Total à régler</span>
+        <strong>{{ order.total|floatformat:0 }} FCFA</strong>
+      </div>
+      <div class="delivery-summary">
+        <span class="eyebrow">LIVRAISON</span>
+        <p>{{ order.customer_name }}<br>{{ order.phone }}<br>{{ order.address }}, {{ order.city }}</p>
+      </div>
+    </aside>
+  </div>
+</section>
+{% endblock %}
