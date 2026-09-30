@@ -1,0 +1,12 @@
+<div class="notice-panel order-tracking-panel">
+  <span class="notice-icon">04</span>
+  <div>
+    <span class="eyebrow">SUIVI DE LIVRAISON</span>
+    <h2>{{ order.get_status_display }}</h2>
+    {% if order.shipping_carrier %}<p>Transporteur : {{ order.shipping_carrier }}</p>{% endif %}
+    {% if order.tracking_number %}<p>Numéro de suivi : <strong>{{ order.tracking_number }}</strong></p>{% endif %}
+    {% if order.status == 'delivered' and order.delivered_at %}<p>Livrée le {{ order.delivered_at|date:'j F Y' }}.</p>{% elif order.status == 'shipped' %}<p>Votre commande est en route.</p>{% else %}<p>Les prochaines étapes apparaîtront ici et vous seront envoyées par e-mail.</p>{% endif %}
+    {% if return_request %}<p class="status-pill">Demande de retour : {{ return_request.get_status_display }}</p>
+    {% elif return_eligible %}<form method="post" action="{% url 'demande_retour' order.reference %}" class="return-request-form">{% csrf_token %}<label for="return-type-{{ order.reference }}">Retour ou échange</label><select id="return-type-{{ order.reference }}" name="request_type"><option value="return">Retour / remboursement</option><option value="exchange">Échange</option></select><label for="return-reason-{{ order.reference }}">Expliquez votre demande (14 jours après livraison)</label><textarea id="return-reason-{{ order.reference }}" name="reason" rows="3" maxlength="1200" required placeholder="Expliquez brièvement la raison"></textarea><button class="button button-outline" type="submit">Envoyer la demande</button></form>{% endif %}
+  </div>
+</div>

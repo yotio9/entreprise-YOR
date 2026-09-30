@@ -18,6 +18,7 @@
 		<span class="eyebrow">PAIEMENT WAVE · {{ WAVE_MERCHANT_NUMBER }}</span>
 		<p>État : <span class="status-pill">{{ order.get_payment_status_display }}</span></p>
 		{% if order.wave_launch_url %}<p>Lien associé : <a class="text-link" href="{{ order.wave_launch_url }}" target="_blank" rel="noopener">Ouvrir le lien Wave ↗</a></p>{% endif %}
+		{% if return_request %}<div class="return-admin-summary"><span class="eyebrow">DEMANDE DE RETOUR · {{ return_request.get_status_display }}</span><p>{{ return_request.reason }}</p>{% if return_request.admin_note %}<p>{{ return_request.admin_note }}</p>{% endif %}<a class="text-link" href="{% url 'owner_admin:boutique_returnrequest_changelist' %}">Gérer les retours ↗</a></div>{% endif %}
 		{% if order.payment_status != 'confirmed' and order.status != 'cancelled' %}
 			<form method="post" action="{% url 'admin_lien_wave' order.reference %}" class="confirm-payment-form">
 				{% csrf_token %}
@@ -34,6 +35,7 @@
 		{% elif order.payment_status == 'confirmed' %}
 			<p class="payment-confirmed">Paiement confirmé, reçu disponible pour le client.</p>
 		{% endif %}
+		{% if order.status != 'cancelled' %}<form method="post" action="{% url 'admin_expedition' order.reference %}" class="confirm-payment-form fulfillment-form">{% csrf_token %}<span class="eyebrow">PRÉPARATION & EXPÉDITION</span>{{ fulfillment_form.as_p }}<button class="button button-dark" type="submit">Enregistrer et avertir le client</button></form>{% endif %}
 	</section>
 </div>
 {% endblock %}

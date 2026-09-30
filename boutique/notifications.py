@@ -83,3 +83,54 @@ def send_payment_confirmed_email(order):
         f'Yorwani | Paiement confirmé {order.reference}',
         'boutique/emails/payment_confirmed.txt',
     )
+
+
+def send_order_status_email(order, request=None):
+    return _send_order_email(
+        order,
+        f'Yorwani | {order.get_status_display()} · {order.reference}',
+        'boutique/emails/order_status.txt',
+        request=request,
+    )
+
+
+def send_return_request_notifications(return_request, request=None):
+    order = return_request.order
+    admin_recipient = getattr(settings, 'ORDER_NOTIFICATION_EMAIL', '')
+    admin_context = {'return_request': return_request, 'order': order}
+    if request is not None:
+        admin_context['admin_return_url'] = request.build_absolute_uri(reverse('owner_admin:boutique_returnrequest_change', args=[return_request.pk]))
+    try:
+        admin_sent = bool(admin_recipient) and bool(send_mail(
+            subject=f'Yorwani | Demande de retour {order.reference}',
+            message=render_to_string('boutique/emails/return_requested_store.txt', admin_context),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[admin_recipient],
+            fail_silently=False,
+        ))
+        customer_sent = bool(send_mail(
+            subject=f'Yorwani | Demande de retour reçue {order.reference}',
+            message=render_to_string('boutique/emails/return_status.txt', {'return_request': return_request, 'order': order}),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[order.customer_email],
+            fail_silently=False,
+        ))
+        return admin_sent and customer_sent
+    except Exception:
+        logger.exception('Could not send return-request emails for %s', order.reference)
+        return False
+
+
+def send_return_status_email(return_request):
+    order = return_request.order
+    try:
+        return bool(send_mail(
+            subject=f'Yorwani | Retour {return_request.get_status_display()} · {order.reference}',
+            message=render_to_string('boutique/emails/return_status.txt', {'return_request': return_request, 'order': order}),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[order.customer_email],
+            fail_silently=False,
+        ))
+    except Exception:
+        logger.exception('Could not send return status email for %s', order.reference)
+        return False

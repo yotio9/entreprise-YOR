@@ -1,4 +1,6 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+from datetime import timedelta
+import csv
 import hashlib
 import hmac
 import json
@@ -8,20 +10,25 @@ from urllib.parse import urlparse
 
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import login, logout
+from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Avg, Count, Q, Sum
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from .forms import EmailAuthenticationForm, ProductForm, RegistrationForm
-from .models import Category, Order, OrderItem, Product, ProductImage
+from .forms import EmailAuthenticationForm, FulfillmentForm, ProductForm, RegistrationForm, ReturnRequestForm, ReviewForm
+from .models import Category, Coupon, Favorite, Order, OrderItem, Product, ProductImage, ReturnRequest, Review
 from .notifications import (
 	send_new_order_notification_email,
 	send_order_received_email,
+	send_order_status_email,
+	send_return_request_notifications,
 	send_payment_confirmed_email,
 	send_wave_payment_link_email,
 )
@@ -35,36 +42,162 @@ def home(request):
 	featured = Product.objects.filter(is_active=True, is_featured=True, stock__gt=0)[:4]
 	if not featured:
 		featured = Product.objects.filter(is_active=True, stock__gt=0)[:4]
-	return render(request, 'boutique/home.html', {'categories': categories, 'featured': featured})
+	favorite_ids = set(Favorite.objects.filter(user=request.user).values_list('product_id', flat=True)) if request.user.is_authenticated else set()
+	return render(request, 'boutique/home.html', {'categories': categories, 'featured': featured, 'favorite_ids': favorite_ids})
 
 
 def catalogue(request):
-	products = Product.objects.filter(is_active=True)
+	products = Product.objects.filter(is_active=True).select_related('category')
 	categories = Category.objects.filter(is_active=True)
 	category_slug = request.GET.get('categorie', '')
 	selected_size = request.GET.get('taille', '').strip().upper()
 	search = request.GET.get('q', '').strip()
+	selected_color = request.GET.get('couleur', '').strip()
+	selected_sort = request.GET.get('tri', 'featured')
+	minimum_price = request.GET.get('prix_min', '').strip()
+	maximum_price = request.GET.get('prix_max', '').strip()
+	in_stock = request.GET.get('disponible') == '1'
 	if category_slug:
 		products = products.filter(category__slug=category_slug)
 	if search:
-		products = products.filter(Q(name__icontains=search) | Q(description__icontains=search))
+		products = products.filter(
+			Q(name__icontains=search)
+			| Q(description__icontains=search)
+			| Q(material__icontains=search)
+			| Q(color__icontains=search)
+			| Q(category__name__icontains=search)
+		)
+	if selected_color:
+		products = products.filter(color__iexact=selected_color)
+	for value, lookup, label in (
+		(minimum_price, 'price__gte', 'minimum'),
+		(maximum_price, 'price__lte', 'maximum'),
+	):
+		if value:
+			try:
+				products = products.filter(**{lookup: Decimal(value)})
+			except InvalidOperation:
+				if label == 'minimum':
+					minimum_price = ''
+				else:
+					maximum_price = ''
+	if in_stock:
+		products = products.filter(stock__gt=0)
 	if selected_size:
 		products = [product for product in products if selected_size in product.sizes]
+	if selected_sort == 'price_asc':
+		products = products.order_by('price', 'name') if hasattr(products, 'order_by') else sorted(products, key=lambda product: product.price)
+	elif selected_sort == 'price_desc':
+		products = products.order_by('-price', 'name') if hasattr(products, 'order_by') else sorted(products, key=lambda product: product.price, reverse=True)
+	elif selected_sort == 'name':
+		products = products.order_by('name') if hasattr(products, 'order_by') else sorted(products, key=lambda product: product.name.lower())
+	elif selected_sort == 'rating':
+		if hasattr(products, 'annotate'):
+			products = products.annotate(review_average=Avg('reviews__rating', filter=Q(reviews__is_approved=True))).order_by('-review_average', '-created_at')
+		else:
+			products = sorted(products, key=lambda product: product.name.lower())
+	else:
+		selected_sort = 'featured'
+	colors = Product.objects.filter(is_active=True).exclude(color='').order_by('color').values_list('color', flat=True).distinct()
+	favorite_ids = set()
+	if request.user.is_authenticated:
+		favorite_ids = set(Favorite.objects.filter(user=request.user).values_list('product_id', flat=True))
 	return render(request, 'boutique/catalogue.html', {
 		'products': products,
 		'categories': categories,
 		'selected_category': category_slug,
 		'selected_size': selected_size,
 		'search': search,
+		'colors': colors,
+		'selected_color': selected_color,
+		'selected_sort': selected_sort,
+		'minimum_price': minimum_price,
+		'maximum_price': maximum_price,
+		'in_stock': in_stock,
+		'favorite_ids': favorite_ids,
 	})
 
 
 def product_detail(request, slug):
 	product = get_object_or_404(Product, slug=slug, is_active=True)
+	verified_buyer = request.user.is_authenticated and OrderItem.objects.filter(
+		product=product,
+		order__user=request.user,
+		order__payment_status=Order.PaymentStatus.CONFIRMED,
+	).exclude(order__status=Order.Status.CANCELLED).exists()
+	user_review = Review.objects.filter(product=product, user=request.user).first() if request.user.is_authenticated else None
+	reviews = product.reviews.filter(is_approved=True).select_related('user')
+	product_stats = reviews.aggregate(average=Avg('rating'), count=Count('id'))
+	favorite_ids = set(Favorite.objects.filter(user=request.user).values_list('product_id', flat=True)) if request.user.is_authenticated else set()
+	recommendations = Product.objects.filter(
+		category=product.category,
+		is_active=True,
+		stock__gt=0,
+	).exclude(pk=product.pk).annotate(
+		review_average=Avg('reviews__rating', filter=Q(reviews__is_approved=True)),
+	).order_by('-is_featured', '-review_average', '-created_at')[:4]
+	favorited = request.user.is_authenticated and Favorite.objects.filter(user=request.user, product=product).exists()
 	return render(request, 'boutique/product_detail.html', {
 		'product': product,
 		'gallery': product.images.all(),
+		'reviews': reviews,
+		'review_average': product_stats['average'],
+		'review_count': product_stats['count'],
+		'verified_buyer': verified_buyer,
+		'user_review': user_review,
+		'review_form': ReviewForm(instance=user_review),
+		'recommendations': recommendations,
+		'favorited': favorited,
+		'favorite_ids': favorite_ids,
 	})
+
+
+@login_required
+@require_POST
+def toggle_favorite(request, product_id):
+	product = get_object_or_404(Product, pk=product_id, is_active=True)
+	favorite, created = Favorite.objects.get_or_create(user=request.user, product=product)
+	if not created:
+		favorite.delete()
+		messages.info(request, 'Article retiré de vos favoris.')
+	else:
+		messages.success(request, 'Article ajouté à vos favoris.')
+	next_url = request.POST.get('next', '')
+	if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+		return redirect(next_url)
+	return redirect('produit', slug=product.slug)
+
+
+@login_required
+def favorite_list(request):
+	products = Product.objects.filter(favorited_by__user=request.user, is_active=True).select_related('category')
+	favorite_ids = set(products.values_list('id', flat=True))
+	return render(request, 'boutique/favorites.html', {'products': products, 'favorite_ids': favorite_ids})
+
+
+@login_required
+@require_POST
+def submit_review(request, slug):
+	product = get_object_or_404(Product, slug=slug, is_active=True)
+	if not OrderItem.objects.filter(
+		product=product,
+		order__user=request.user,
+		order__payment_status=Order.PaymentStatus.CONFIRMED,
+	).exclude(order__status=Order.Status.CANCELLED).exists():
+		messages.error(request, 'Un achat de cet article est nécessaire pour laisser un avis vérifié.')
+		return redirect('produit', slug=slug)
+	review = Review.objects.filter(user=request.user, product=product).first()
+	form = ReviewForm(request.POST, instance=review)
+	if form.is_valid():
+		review = form.save(commit=False)
+		review.user = request.user
+		review.product = product
+		review.is_approved = True
+		review.save()
+		messages.success(request, 'Merci, votre avis vérifié a été publié.')
+	else:
+		messages.error(request, 'Vérifiez la note et le texte de votre avis.')
+	return redirect('produit', slug=slug)
 
 
 def _cart_lines(request):
@@ -103,7 +236,41 @@ def _cart_json(request):
 
 def cart_detail(request):
 	lines, subtotal = _cart_lines(request)
-	return render(request, 'boutique/cart.html', {'lines': lines, 'subtotal': subtotal})
+	coupon = Coupon.objects.filter(code=request.session.get('coupon_code', '')).first()
+	discount = coupon.calculate_discount(subtotal) if coupon and coupon.is_valid_for(subtotal) else Decimal('0.00')
+	if not discount:
+		coupon = None
+		request.session.pop('coupon_code', None)
+	return render(request, 'boutique/cart.html', {
+		'lines': lines,
+		'subtotal': subtotal,
+		'coupon': coupon,
+		'discount': discount,
+		'total': max(subtotal - discount, Decimal('0.00')),
+	})
+
+
+@require_POST
+def apply_coupon(request):
+	lines, subtotal = _cart_lines(request)
+	code = request.POST.get('coupon_code', '').strip().upper()
+	coupon = Coupon.objects.filter(code=code).first()
+	if not lines:
+		messages.error(request, 'Ajoutez un article au panier avant d’utiliser un code promo.')
+	elif not coupon or not coupon.is_valid_for(subtotal):
+		request.session.pop('coupon_code', None)
+		messages.error(request, 'Ce code promo est invalide, expiré ou ne répond pas au montant minimum.')
+	else:
+		request.session['coupon_code'] = coupon.code
+		messages.success(request, 'Code promo appliqué à votre panier.')
+	return redirect('panier')
+
+
+@require_POST
+def remove_coupon(request):
+	request.session.pop('coupon_code', None)
+	messages.info(request, 'Code promo retiré.')
+	return redirect('panier')
 
 
 @require_POST
@@ -154,18 +321,53 @@ def update_cart(request):
 @login_required
 def checkout(request):
 	lines, subtotal = _cart_lines(request)
+	coupon = Coupon.objects.filter(code=request.session.get('coupon_code', '')).first()
+	discount = coupon.calculate_discount(subtotal) if coupon and coupon.is_valid_for(subtotal) else Decimal('0.00')
+	if not discount:
+		coupon = None
+	use_loyalty_points = request.method == 'POST' and request.POST.get('use_loyalty_points') == '1'
+	available_points = request.user.loyalty_points
+	preview_points_used = min(available_points, int(max(subtotal - discount, Decimal('0.00')) // Decimal('10'))) if use_loyalty_points else 0
+	preview_loyalty_discount = Decimal(preview_points_used * 10)
+	checkout_context = {
+		'lines': lines,
+		'subtotal': subtotal,
+		'coupon': coupon,
+		'discount': discount,
+		'loyalty_points_available': available_points,
+		'loyalty_points_used': preview_points_used,
+		'loyalty_discount': preview_loyalty_discount,
+		'use_loyalty_points': use_loyalty_points,
+		'total': max(subtotal - discount - preview_loyalty_discount, Decimal('0.00')),
+	}
 	if not lines:
 		messages.info(request, 'Votre panier est vide.')
 		return redirect('catalogue')
 	if request.method == 'POST':
 		if any(not request.POST.get(field, '').strip() for field in ('phone', 'address', 'city')):
 			messages.error(request, 'Renseignez votre téléphone et votre adresse de livraison.')
-			return render(request, 'boutique/checkout_payment.html', {'lines': lines, 'subtotal': subtotal})
+			return render(request, 'boutique/checkout_payment.html', checkout_context)
 		payment_method = request.POST.get('payment_method')
 		if payment_method not in Order.PaymentMethod.values:
 			messages.error(request, 'Choisissez Wave maintenant ou le paiement à la livraison.')
-			return render(request, 'boutique/checkout_payment.html', {'lines': lines, 'subtotal': subtotal})
+			return render(request, 'boutique/checkout_payment.html', checkout_context)
 		with transaction.atomic():
+			coupon_code = request.session.get('coupon_code', '')
+			coupon = Coupon.objects.select_for_update().filter(code=coupon_code).first() if coupon_code else None
+			if coupon_code and (not coupon or not coupon.is_valid_for(subtotal)):
+				request.session.pop('coupon_code', None)
+				messages.error(request, 'Le code promo n’est plus valide. Vérifiez le nouveau total de votre panier.')
+				checkout_context.update({'coupon': None, 'discount': Decimal('0.00'), 'total': subtotal})
+				return render(request, 'boutique/checkout_payment.html', checkout_context)
+			coupon_discount = coupon.calculate_discount(subtotal) if coupon else Decimal('0.00')
+			locked_user = get_user_model().objects.select_for_update().get(pk=request.user.pk)
+			remaining_for_points = max(subtotal - coupon_discount, Decimal('0.00'))
+			loyalty_points_used = min(
+				locked_user.loyalty_points,
+				int(remaining_for_points // Decimal('10')),
+			) if use_loyalty_points else 0
+			loyalty_discount = Decimal(loyalty_points_used * 10)
+			discount = coupon_discount + loyalty_discount
 			current_products = {}
 			requested_quantities = {}
 			for line in lines:
@@ -178,7 +380,7 @@ def checkout(request):
 					return redirect('panier')
 				current_products[product_id] = product
 			order = Order.objects.create(
-				user=request.user,
+				user=locked_user,
 				payment_method=payment_method,
 				payment_status=(
 					Order.PaymentStatus.PENDING
@@ -196,7 +398,10 @@ def checkout(request):
 				address=request.POST['address'].strip(),
 				city=request.POST['city'].strip(),
 				delivery_note=request.POST.get('delivery_note', '').strip(),
-				subtotal=sum((line['product'].price * line['quantity'] for line in lines), Decimal('0.00')),
+				subtotal=subtotal,
+				discount_amount=discount,
+				loyalty_points_used=loyalty_points_used,
+				coupon=coupon,
 			)
 			for line in lines:
 				product = current_products[line['product'].pk]
@@ -212,6 +417,12 @@ def checkout(request):
 				product = current_products[product_id]
 				product.stock -= quantity
 				product.save(update_fields=['stock', 'updated_at'])
+			if coupon:
+				coupon.uses_count += 1
+				coupon.save(update_fields=['uses_count'])
+			if loyalty_points_used:
+				locked_user.loyalty_points -= loyalty_points_used
+				locked_user.save(update_fields=['loyalty_points'])
 		wave_launch_url = ''
 		if payment_method == Order.PaymentMethod.WAVE and (settings.WAVE_API_KEY or settings.WAVE_PAYMENT_LINK_BASE):
 			try:
@@ -238,8 +449,15 @@ def checkout(request):
 		else:
 			messages.warning(request, 'Commande reçue, mais l’e-mail n’a pas pu être envoyé. Votre commande reste enregistrée.')
 		request.session['cart'] = {}
+		request.session.pop('coupon_code', None)
 		return redirect('commande_detail', reference=order.reference)
-	return render(request, 'boutique/checkout_payment.html', {'lines': lines, 'subtotal': subtotal})
+	return render(request, 'boutique/checkout_payment.html', {
+		**checkout_context,
+		'use_loyalty_points': False,
+		'loyalty_points_used': 0,
+		'loyalty_discount': Decimal('0.00'),
+		'total': subtotal - discount,
+	})
 
 
 @login_required
@@ -253,11 +471,24 @@ def order_detail(request, reference):
 	order = get_object_or_404(Order.objects.prefetch_related('items'), reference=reference)
 	if order.user_id != request.user.id and not request.user.is_superuser:
 		raise Http404
+	return_request = ReturnRequest.objects.filter(order=order).first()
+	context = {
+		'order': order,
+		'return_request': return_request,
+		'return_form': ReturnRequestForm(),
+		'return_eligible': (
+			order.status == Order.Status.DELIVERED
+			and order.payment_status == Order.PaymentStatus.CONFIRMED
+			and order.delivered_at is not None
+			and timezone.now() - order.delivered_at <= timedelta(days=14)
+			and return_request is None
+		),
+	}
 	if order.payment_method == Order.PaymentMethod.CASH_ON_DELIVERY:
-		return render(request, 'boutique/order_detail_delivery.html', {'order': order})
-	if order.wave_launch_url:
-		return render(request, 'boutique/order_detail_wave_checkout.html', {'order': order})
-	return render(request, 'boutique/order_detail.html', {'order': order})
+		return render(request, 'boutique/order_detail_delivery.html', context)
+	if order.payment_method == Order.PaymentMethod.WAVE:
+		return render(request, 'boutique/order_detail_wave_checkout.html', context)
+	return render(request, 'boutique/order_detail.html', context)
 
 
 @login_required
@@ -268,6 +499,35 @@ def receipt(request, reference):
 	if order.payment_status != Order.PaymentStatus.CONFIRMED:
 		return HttpResponse('Le reçu sera disponible après confirmation du paiement.', status=409)
 	return render(request, 'boutique/receipt.html', {'order': order})
+
+
+@login_required
+@require_POST
+def request_return(request, reference):
+	order = get_object_or_404(Order.objects.select_related('user'), reference=reference)
+	if order.user_id != request.user.id:
+		raise Http404
+	if order.status != Order.Status.DELIVERED or order.payment_status != Order.PaymentStatus.CONFIRMED:
+		messages.error(request, 'Une demande de retour est possible après livraison et confirmation du paiement.')
+		return redirect('commande_detail', reference=reference)
+	if not order.delivered_at or timezone.now() - order.delivered_at > timedelta(days=14):
+		messages.error(request, 'Le délai de retour de 14 jours après livraison est dépassé.')
+		return redirect('commande_detail', reference=reference)
+	if hasattr(order, 'return_request'):
+		messages.info(request, 'Une demande de retour existe déjà pour cette commande.')
+		return redirect('commande_detail', reference=reference)
+	form = ReturnRequestForm(request.POST)
+	if form.is_valid():
+		return_request = form.save(commit=False)
+		return_request.order = order
+		return_request.save()
+		if send_return_request_notifications(return_request, request=request):
+			messages.success(request, 'Votre demande de retour a été enregistrée. Vous et la boutique recevrez un e-mail de suivi.')
+		else:
+			messages.warning(request, 'Votre demande de retour est enregistrée, mais un e-mail n’a pas pu être envoyé.')
+	else:
+		messages.error(request, 'Indiquez brièvement la raison de votre demande.')
+	return redirect('commande_detail', reference=reference)
 
 
 def register(request):
@@ -331,8 +591,17 @@ def admin_accounting(request):
 	open_orders = (wave_pending_orders | cash_due_orders).select_related('user').order_by('-created_at')
 
 	def total_for(orders):
-		totals = orders.aggregate(subtotal=Sum('subtotal'), shipping=Sum('shipping_fee'))
-		return (totals['subtotal'] or Decimal('0.00')) + (totals['shipping'] or Decimal('0.00'))
+		totals = orders.aggregate(
+			subtotal=Sum('subtotal'),
+			shipping=Sum('shipping_fee'),
+			discounts=Sum('discount_amount'),
+		)
+		return max(
+			(totals['subtotal'] or Decimal('0.00'))
+			+ (totals['shipping'] or Decimal('0.00'))
+			- (totals['discounts'] or Decimal('0.00')),
+			Decimal('0.00'),
+		)
 
 	context = {
 		'received_total': total_for(paid_orders),
@@ -343,6 +612,38 @@ def admin_accounting(request):
 		'open_orders': open_orders,
 	}
 	return render(request, 'boutique/admin_accounting.html', context)
+
+
+@admin_required
+def admin_accounting_export(request):
+	orders = Order.objects.exclude(status=Order.Status.CANCELLED).select_related('coupon').order_by('-created_at')
+	response = HttpResponse(content_type='text/csv; charset=utf-8')
+	response['Content-Disposition'] = 'attachment; filename="yorwani-comptabilite.csv"'
+	response.write('\ufeff')
+	writer = csv.writer(response)
+	writer.writerow((
+		'Référence', 'Date', 'Client', 'E-mail', 'Mode de paiement', 'État du paiement',
+		'État commande', 'Sous-total FCFA', 'Livraison FCFA', 'Remise FCFA', 'Net FCFA', 'Code promo',
+		'Transporteur', 'Numéro de suivi',
+	))
+	for order in orders:
+		writer.writerow((
+			order.reference,
+			order.created_at.strftime('%Y-%m-%d %H:%M'),
+			order.customer_name,
+			order.customer_email,
+			order.get_payment_method_display(),
+			order.get_payment_status_display(),
+			order.get_status_display(),
+			order.subtotal,
+			order.shipping_fee,
+			order.discount_amount,
+			order.total,
+			order.coupon.code if order.coupon else '',
+			order.shipping_carrier,
+			order.tracking_number,
+		))
+	return response
 
 
 @admin_required
@@ -403,9 +704,67 @@ def admin_orders(request):
 @admin_required
 def admin_order_detail(request, reference):
 	order = get_object_or_404(Order.objects.select_related('user').prefetch_related('items'), reference=reference)
+	context = {
+		'order': order,
+		'fulfillment_form': FulfillmentForm(instance=order),
+		'return_request': ReturnRequest.objects.filter(order=order).first(),
+	}
 	if order.payment_method == Order.PaymentMethod.CASH_ON_DELIVERY:
-		return render(request, 'boutique/admin_order_delivery_detail.html', {'order': order})
-	return render(request, 'boutique/admin_order_detail.html', {'order': order})
+		return render(request, 'boutique/admin_order_delivery_detail.html', context)
+	return render(request, 'boutique/admin_order_detail.html', context)
+
+
+@admin_required
+@require_POST
+def update_fulfillment(request, reference):
+	order = get_object_or_404(Order, reference=reference)
+	previous_status = order.status
+	form = FulfillmentForm(request.POST, instance=order)
+	if not form.is_valid():
+		messages.error(request, 'Vérifiez l’état de la commande et les informations de suivi.')
+		return redirect('admin_commande_detail', reference=reference)
+	new_status = form.cleaned_data['status']
+	status_order = {
+		Order.Status.CONFIRMED: 0,
+		Order.Status.PREPARING: 1,
+		Order.Status.SHIPPED: 2,
+		Order.Status.DELIVERED: 3,
+	}
+	if (
+		order.status in status_order
+		and new_status in status_order
+		and status_order[new_status] < status_order[order.status]
+	):
+		messages.error(request, 'L’état d’expédition ne peut pas revenir à une étape précédente.')
+		return redirect('admin_commande_detail', reference=reference)
+	if new_status in (Order.Status.PREPARING, Order.Status.SHIPPED, Order.Status.DELIVERED):
+		cod_order = order.payment_method == Order.PaymentMethod.CASH_ON_DELIVERY and order.payment_status == Order.PaymentStatus.DUE_ON_DELIVERY
+		if order.payment_status != Order.PaymentStatus.CONFIRMED and not cod_order:
+			messages.error(request, 'Confirmez le paiement avant de préparer ou d’expédier cette commande.')
+			return redirect('admin_commande_detail', reference=reference)
+		if new_status == Order.Status.DELIVERED and order.payment_status != Order.PaymentStatus.CONFIRMED:
+			messages.error(request, 'Confirmez la réception du paiement à la livraison avant de marquer la commande livrée.')
+			return redirect('admin_commande_detail', reference=reference)
+	if new_status == Order.Status.CONFIRMED and order.payment_status != Order.PaymentStatus.CONFIRMED:
+		messages.error(request, 'Confirmez le paiement avant de confirmer la commande.')
+		return redirect('admin_commande_detail', reference=reference)
+	updated_order = form.save(commit=False)
+	if new_status == Order.Status.DELIVERED and not updated_order.delivered_at:
+		updated_order.delivered_at = timezone.now()
+		if not updated_order.loyalty_points_awarded and updated_order.total >= Decimal('1000.00'):
+			customer = type(updated_order.user).objects.select_for_update().get(pk=updated_order.user_id)
+			updated_order.loyalty_points_awarded = int(updated_order.total // Decimal('1000'))
+			customer.loyalty_points += updated_order.loyalty_points_awarded
+			customer.save(update_fields=['loyalty_points'])
+	updated_order.save()
+	if previous_status != updated_order.status:
+		if not send_order_status_email(updated_order, request=request):
+			messages.warning(request, 'État mis à jour, mais l’e-mail client n’a pas pu être envoyé.')
+		else:
+			messages.success(request, 'État de la commande mis à jour et client averti par e-mail.')
+	else:
+		messages.success(request, 'Informations de suivi enregistrées.')
+	return redirect('admin_commande_detail', reference=reference)
 
 
 @admin_required

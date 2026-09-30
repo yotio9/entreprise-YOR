@@ -2,15 +2,18 @@ import hashlib
 import hmac
 import json
 import time
+from datetime import timedelta
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from .forms import ProductForm, RegistrationForm
-from .models import Category, Order, Product
+from .models import Category, Coupon, Favorite, Order, OrderItem, Product, ReturnRequest, Review
 from .wave import create_checkout_session, create_merchant_payment_link
 
 User = get_user_model()
@@ -54,6 +57,8 @@ class StorefrontTests(TestCase):
                 self.assertContains(response, 'boutique/img/favicon.png')
                 self.assertContains(response, 'boutique/img/logo-nom-transparent.png')
                 self.assertContains(response, 'boutique/img/logo-entier-transparent.png')
+                if url == reverse('produit', args=[self.product.slug]):
+                    self.assertContains(response, 'product-image-zoom')
 
     def test_owner_dashboard_renders(self):
         self.client.force_login(self.admin)
@@ -75,6 +80,7 @@ class StorefrontTests(TestCase):
             payment_status=Order.PaymentStatus.CONFIRMED,
             subtotal='30000.00',
             shipping_fee='1000.00',
+            discount_amount='1000.00',
         )
         wave_pending_order = Order.objects.create(
             **base_order,
@@ -101,13 +107,36 @@ class StorefrontTests(TestCase):
         response = self.client.get(reverse('admin_comptabilite'))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, '31000 FCFA')
+        self.assertContains(response, '30000 FCFA')
         self.assertContains(response, '16000 FCFA')
         self.assertContains(response, '5500 FCFA')
         self.assertContains(response, '21500 FCFA')
         self.assertContains(response, wave_pending_order.reference)
         self.assertContains(response, cash_due_order.reference)
         self.assertNotContains(response, cancelled_order.reference)
+
+    def test_accounting_export_is_private_and_contains_net_order_values(self):
+        order = Order.objects.create(
+            user=self.customer,
+            customer_name='Awa Diallo',
+            customer_email=self.customer.email,
+            phone='0712345678',
+            address='Rue des Jardins',
+            city='Cocody, Abidjan',
+            payment_status=Order.PaymentStatus.CONFIRMED,
+            subtotal='25000.00',
+            discount_amount='2500.00',
+        )
+        self.client.force_login(self.customer)
+        denied = self.client.get(reverse('admin_comptabilite_export'))
+        self.assertEqual(denied.status_code, 302)
+
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('admin_comptabilite_export'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/csv; charset=utf-8')
+        self.assertIn(order.reference, response.content.decode('utf-8-sig'))
+        self.assertIn('22500', response.content.decode('utf-8-sig'))
 
     def test_customer_cannot_view_admin_accounting(self):
         self.client.force_login(self.customer)
@@ -186,6 +215,91 @@ class StorefrontTests(TestCase):
         self.assertRedirects(response, reverse('admin_commande_detail', args=[order.reference]))
         order.refresh_from_db()
         self.assertFalse(order.wave_launch_url)
+        self.assertEqual(len(mail.outbox), 0)
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_admin_shipment_updates_email_tracking_and_customer_can_request_return(self):
+        order = Order.objects.create(
+            user=self.customer,
+            customer_name='Awa Diallo',
+            customer_email=self.customer.email,
+            phone='0712345678',
+            address='Rue des Jardins',
+            city='Cocody, Abidjan',
+            payment_method=Order.PaymentMethod.WAVE,
+            payment_status=Order.PaymentStatus.CONFIRMED,
+            status=Order.Status.CONFIRMED,
+            subtotal='25000.00',
+        )
+        mail.outbox.clear()
+        self.client.force_login(self.admin)
+
+        shipped_response = self.client.post(reverse('admin_expedition', args=[order.reference]), {
+            'status': Order.Status.SHIPPED,
+            'shipping_carrier': 'Yorwani Express',
+            'tracking_number': 'YR-2026-001',
+        })
+
+        self.assertRedirects(shipped_response, reverse('admin_commande_detail', args=[order.reference]))
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.SHIPPED)
+        self.assertEqual(order.tracking_number, 'YR-2026-001')
+        self.assertIn('YR-2026-001', mail.outbox[0].body)
+        self.assertEqual(mail.outbox[0].to, [self.customer.email])
+
+        delivered_response = self.client.post(reverse('admin_expedition', args=[order.reference]), {
+            'status': Order.Status.DELIVERED,
+            'shipping_carrier': 'Yorwani Express',
+            'tracking_number': 'YR-2026-001',
+        })
+        self.assertRedirects(delivered_response, reverse('admin_commande_detail', args=[order.reference]))
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.DELIVERED)
+        self.assertIsNotNone(order.delivered_at)
+        self.assertEqual(len(mail.outbox), 2)
+
+        self.client.force_login(self.customer)
+        customer_order_page = self.client.get(reverse('commande_detail', args=[order.reference]))
+        self.assertContains(customer_order_page, 'YR-2026-001')
+        self.assertContains(customer_order_page, '14 jours après livraison')
+        return_response = self.client.post(reverse('demande_retour', args=[order.reference]), {
+            'request_type': ReturnRequest.RequestType.EXCHANGE,
+            'reason': 'La taille ne convient pas.',
+        })
+        self.assertRedirects(return_response, reverse('commande_detail', args=[order.reference]))
+        return_request = ReturnRequest.objects.get(order=order)
+        self.assertEqual(return_request.status, ReturnRequest.Status.PENDING)
+        self.assertEqual(return_request.request_type, ReturnRequest.RequestType.EXCHANGE)
+        self.assertEqual(len(mail.outbox), 4)
+        self.assertIn('Échange', mail.outbox[2].body)
+        self.assertEqual(mail.outbox[3].to, [self.customer.email])
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_unpaid_wave_order_cannot_be_marked_shipped(self):
+        order = Order.objects.create(
+            user=self.customer,
+            customer_name='Awa Diallo',
+            customer_email=self.customer.email,
+            phone='0712345678',
+            address='Rue des Jardins',
+            city='Cocody, Abidjan',
+            payment_method=Order.PaymentMethod.WAVE,
+            payment_status=Order.PaymentStatus.PENDING,
+            status=Order.Status.AWAITING_PAYMENT,
+            subtotal='25000.00',
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.post(reverse('admin_expedition', args=[order.reference]), {
+            'status': Order.Status.SHIPPED,
+            'shipping_carrier': 'Yorwani Express',
+            'tracking_number': 'YR-UNPAID',
+        })
+
+        self.assertRedirects(response, reverse('admin_commande_detail', args=[order.reference]))
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.AWAITING_PAYMENT)
+        self.assertFalse(order.tracking_number)
         self.assertEqual(len(mail.outbox), 0)
 
     @override_settings(
@@ -494,6 +608,174 @@ class StorefrontTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Robe Awa')
 
+    def test_catalogue_search_filters_color_price_stock_and_sort(self):
+        self.product.material = 'Coton biologique'
+        self.product.color = 'Noir'
+        self.product.save(update_fields=['material', 'color'])
+        red_product = Product.objects.create(
+            category=self.category,
+            name='Pantalon Naya',
+            description='Coupe fluide.',
+            material='Lin',
+            color='Rouge',
+            price='10000.00',
+            sizes=['M'],
+            stock=0,
+        )
+
+        response = self.client.get(reverse('catalogue'), {
+            'q': 'coton',
+            'couleur': 'Noir',
+            'prix_min': '20000',
+            'prix_max': '30000',
+            'disponible': '1',
+            'tri': 'price_asc',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Robe Awa')
+        self.assertNotContains(response, red_product.name)
+
+    def test_customer_can_save_and_remove_favorites(self):
+        self.client.force_login(self.customer)
+        response = self.client.post(reverse('favori_basculer', args=[self.product.pk]), {'next': reverse('catalogue')})
+        self.assertRedirects(response, reverse('catalogue'))
+        self.assertTrue(Favorite.objects.filter(user=self.customer, product=self.product).exists())
+        favorites_page = self.client.get(reverse('favoris'))
+        self.assertContains(favorites_page, self.product.name)
+        self.assertContains(favorites_page, 'Retirer des favoris')
+
+        self.client.post(reverse('favori_basculer', args=[self.product.pk]), {'next': reverse('catalogue')})
+        self.assertFalse(Favorite.objects.filter(user=self.customer, product=self.product).exists())
+
+    def test_only_previous_buyers_can_post_verified_product_reviews(self):
+        self.client.force_login(self.customer)
+        review_url = reverse('avis_ajouter', args=[self.product.slug])
+        denied_response = self.client.post(review_url, {'rating': '5', 'comment': 'Très belle pièce.'})
+        self.assertRedirects(denied_response, reverse('produit', args=[self.product.slug]))
+        self.assertFalse(Review.objects.filter(user=self.customer, product=self.product).exists())
+
+        order = Order.objects.create(
+            user=self.customer,
+            customer_name='Awa Diallo',
+            customer_email=self.customer.email,
+            phone='0712345678',
+            address='Rue des Jardins',
+            city='Cocody, Abidjan',
+            payment_status=Order.PaymentStatus.CONFIRMED,
+            subtotal='25000.00',
+        )
+        OrderItem.objects.create(order=order, product=self.product, product_name=self.product.name, quantity=1, unit_price=self.product.price)
+        self.client.post(review_url, {'rating': '5', 'comment': 'Très belle pièce.'})
+        product_page = self.client.get(reverse('produit', args=[self.product.slug]))
+        self.assertContains(product_page, 'Très belle pièce.')
+        self.assertContains(product_page, 'Achat vérifié')
+        self.assertEqual(product_page.context['review_average'], Decimal('5'))
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        ORDER_NOTIFICATION_EMAIL='owner@example.com',
+        WAVE_PAYMENT_LINK_BASE='',
+    )
+    def test_coupon_is_applied_to_order_and_usage_counted_once(self):
+        coupon = Coupon.objects.create(
+            code='yorwani10',
+            discount_type=Coupon.DiscountType.PERCENT,
+            discount_value='10',
+            starts_at=timezone.now() - timedelta(days=1),
+            maximum_uses=1,
+        )
+        self.client.force_login(self.customer)
+        session = self.client.session
+        session['cart'] = {f'{self.product.pk}:M': {'product_id': self.product.pk, 'quantity': 1, 'size': 'M'}}
+        session.save()
+
+        applied = self.client.post(reverse('code_promo_appliquer'), {'coupon_code': 'yorwani10'})
+        self.assertRedirects(applied, reverse('panier'))
+        self.assertContains(self.client.get(reverse('panier')), '22500 FCFA')
+        response = self.client.post(reverse('commande'), {
+            'phone': '0712345678',
+            'address': 'Rue des Jardins',
+            'city': 'Cocody, Abidjan',
+            'payment_method': Order.PaymentMethod.WAVE,
+        })
+        self.assertEqual(response.status_code, 302)
+        order = Order.objects.get(user=self.customer)
+        self.assertEqual(order.subtotal, Decimal('25000.00'))
+        self.assertEqual(order.discount_amount, Decimal('2500.00'))
+        self.assertEqual(order.total, Decimal('22500.00'))
+        self.assertEqual(order.coupon, coupon)
+        coupon.refresh_from_db()
+        self.assertEqual(coupon.uses_count, 1)
+
+        session = self.client.session
+        session['cart'] = {f'{self.product.pk}:M': {'product_id': self.product.pk, 'quantity': 1, 'size': 'M'}}
+        session['coupon_code'] = coupon.code
+        session.save()
+        self.client.post(reverse('commande'), {
+            'phone': '0712345678',
+            'address': 'Rue des Jardins',
+            'city': 'Cocody, Abidjan',
+            'payment_method': Order.PaymentMethod.WAVE,
+        })
+        self.assertEqual(Order.objects.filter(user=self.customer).count(), 1)
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        ORDER_NOTIFICATION_EMAIL='owner@example.com',
+        WAVE_PAYMENT_LINK_BASE='',
+    )
+    def test_loyalty_points_are_redeemed_earned_at_delivery_and_restored_on_refund(self):
+        self.customer.loyalty_points = 100
+        self.customer.save(update_fields=['loyalty_points'])
+        self.client.force_login(self.customer)
+        session = self.client.session
+        session['cart'] = {f'{self.product.pk}:M': {'product_id': self.product.pk, 'quantity': 1, 'size': 'M'}}
+        session.save()
+
+        response = self.client.post(reverse('commande'), {
+            'phone': '0712345678',
+            'address': 'Rue des Jardins',
+            'city': 'Cocody, Abidjan',
+            'payment_method': Order.PaymentMethod.CASH_ON_DELIVERY,
+            'use_loyalty_points': '1',
+        })
+        order = Order.objects.get(user=self.customer)
+        self.customer.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(order.loyalty_points_used, 100)
+        self.assertEqual(order.discount_amount, Decimal('1000.00'))
+        self.assertEqual(order.total, Decimal('24000.00'))
+        self.assertEqual(self.customer.loyalty_points, 0)
+
+        self.client.force_login(self.admin)
+        self.client.post(reverse('admin_paiement_confirmer', args=[order.reference]))
+        self.client.post(reverse('admin_expedition', args=[order.reference]), {
+            'status': Order.Status.DELIVERED,
+            'shipping_carrier': 'Yorwani Express',
+            'tracking_number': 'YR-LOYALTY',
+        })
+        order.refresh_from_db()
+        self.customer.refresh_from_db()
+        self.assertEqual(order.loyalty_points_awarded, 24)
+        self.assertEqual(self.customer.loyalty_points, 24)
+
+        return_request = ReturnRequest.objects.create(
+            order=order,
+            request_type=ReturnRequest.RequestType.RETURN,
+            reason='Article retourné.',
+        )
+        from django.contrib.admin.sites import AdminSite
+        from django.test import RequestFactory
+        from .admin import ReturnRequestAdmin
+
+        admin_request = RequestFactory().post('/admin/')
+        admin_request.user = self.admin
+        return_request.status = ReturnRequest.Status.REFUNDED
+        ReturnRequestAdmin(ReturnRequest, AdminSite()).save_model(admin_request, return_request, None, True)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.loyalty_points, 100)
+
     def test_customer_cannot_open_private_dashboard(self):
         self.client.force_login(self.customer)
         response = self.client.get(reverse('dashboard'))
@@ -551,7 +833,7 @@ class StorefrontTests(TestCase):
         self.assertNotIn('/maison/commandes/', mail.outbox[0].body)
 
         order_page = self.client.get(reverse('commande_detail', args=[order.reference]))
-        self.assertContains(order_page, 'expédiée sous 5 jours après confirmation du paiement')
+        self.assertContains(order_page, 'votre commande sera expédiée sous 5 jours')
         receipt_response = self.client.get(reverse('recu', args=[order.reference]))
         self.assertEqual(receipt_response.status_code, 409)
 

@@ -1,0 +1,11 @@
+Bonjour {{ order.customer_name }},
+
+L’état de votre commande Yorwani {{ order.reference }} a été mis à jour : {{ order.get_status_display }}.
+{% if order.shipping_carrier %}Transporteur : {{ order.shipping_carrier }}
+{% endif %}{% if order.tracking_number %}Numéro de suivi : {{ order.tracking_number }}
+{% endif %}
+{% if order.status == 'delivered' %}Votre commande est marquée comme livrée. Pour demander un retour, connectez-vous à votre compte dans les 14 jours suivant la livraison.
+{% endif %}{% if order_url %}Suivre ma commande : {{ order_url }}
+{% endif %}
+Merci pour votre confiance,
+La maison Yorwani

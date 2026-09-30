@@ -1,0 +1,11 @@
+Une demande de retour Yorwani vient d’être enregistrée.
+
+Commande : {{ order.reference }}
+Client : {{ order.customer_name }}
+E-mail : {{ order.customer_email }}
+Téléphone : {{ order.phone }}
+Type : {{ return_request.get_request_type_display }}
+Raison : {{ return_request.reason }}
+Statut : {{ return_request.get_status_display }}
+
+Gérer la demande : {{ admin_return_url }}

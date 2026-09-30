@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="{% static 'boutique/css/payment.css' %}">
   <link rel="stylesheet" href="{% static 'boutique/css/readability.css' %}">
   <link rel="stylesheet" href="{% static 'boutique/css/brand-assets.css' %}">
+  <link rel="stylesheet" href="{% static 'boutique/css/shop-features.css' %}">
   {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -32,6 +33,7 @@
     <div class="header-actions">
       {% if user.is_authenticated %}
         <a class="account-link account-name" href="{% url 'historique_commandes' %}">{{ user.get_full_name|default:user.email }}</a>
+        <a class="account-link favorites-shortcut" href="{% url 'favoris' %}">Favoris</a>
         {% if user.is_superuser %}<a class="account-link admin-shortcut" href="{% url 'dashboard' %}">Maison</a>{% endif %}
       {% else %}<a class="account-link" href="{% url 'connexion' %}">Connexion</a>{% endif %}
       <a class="bag-link" href="{% url 'panier' %}" aria-label="Panier, {{ cart_count }} article(s)">Panier <span id="cart-count">{{ cart_count }}</span></a>

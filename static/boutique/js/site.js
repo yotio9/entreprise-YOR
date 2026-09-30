@@ -41,6 +41,8 @@
     updateCount(data.count);
     const subtotal = document.getElementById('cart-subtotal');
     if (subtotal) subtotal.textContent = `${Number(data.subtotal).toLocaleString('fr-FR')} FCFA`;
+    const total = document.getElementById('cart-total');
+    if (total && !document.querySelector('.coupon-saved')) total.textContent = `${Number(data.subtotal).toLocaleString('fr-FR')} FCFA`;
     for (const row of document.querySelectorAll('[data-cart-line]')) {
       const item = data.lines.find((line) => line.key === row.dataset.cartLine);
       if (!item) row.remove();
@@ -50,6 +52,7 @@
       }
     }
     if (!data.count && document.querySelector('.cart-lines')) window.location.reload();
+    if (document.querySelector('.coupon-saved')) window.location.reload();
   };
 
   document.querySelectorAll('.cart-quantity').forEach((input) => {

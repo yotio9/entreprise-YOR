@@ -1,0 +1,9 @@
+{% extends 'boutique/base.html' %}
+{% block title %}Mes favoris — Yorwani{% endblock %}
+{% block content %}
+<section class="page-intro compact-intro"><span class="eyebrow">ESPACE CLIENT</span><h1>Mes favoris</h1><p>Les pièces que vous gardez à l’œil.</p></section>
+<section class="section collection-section">
+  {% if products %}<div class="product-grid">{% for product in products %}{% include 'boutique/_product_card.html' %}{% endfor %}</div>
+  {% else %}<div class="empty-products"><span class="eyebrow">VOTRE SÉLECTION</span><p>Vous n’avez pas encore ajouté de pièce à vos favoris.</p><a class="button button-dark" href="{% url 'catalogue' %}">Explorer la collection ↗</a></div>{% endif %}
+</section>
+{% endblock %}

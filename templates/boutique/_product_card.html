@@ -5,6 +5,8 @@
     {% else %}<div class="image-placeholder"><span>Y</span></div>{% endif %}
     {% if product.is_featured %}<span class="image-tag">SÉLECTION</span>{% endif %}
   </a>
+  {% if user.is_authenticated %}<form method="post" action="{% url 'favori_basculer' product.id %}" class="favorite-form">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button type="submit" class="favorite-button" aria-label="{% if product.id in favorite_ids %}Retirer des favoris{% else %}Ajouter aux favoris{% endif %}" title="{% if product.id in favorite_ids %}Retirer des favoris{% else %}Ajouter aux favoris{% endif %}">{% if product.id in favorite_ids %}♥{% else %}♡{% endif %}</button></form>{% endif %}
   <div class="product-meta"><div><span class="product-category">{{ product.category.name }}</span><h3><a href="{% url 'produit' product.slug %}">{{ product.name }}</a></h3></div><span class="product-price">{{ product.price|floatformat:0 }} <small>FCFA</small></span></div>
+  {% if product.review_average %}<span class="product-rating">★ {{ product.review_average|floatformat:1 }}</span>{% endif %}
   {% if product.stock == 0 %}<span class="stock-note">Épuisé</span>{% endif %}
 </article>

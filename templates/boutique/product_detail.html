@@ -4,13 +4,42 @@
 <div class="breadcrumbs"><a href="{% url 'accueil' %}">Accueil</a><span>/</span><a href="{% url 'catalogue' %}">La collection</a><span>/</span><span>{{ product.name }}</span></div>
 <section class="product-detail">
   <div class="detail-gallery">
-    <div class="detail-main-image">{% if product.image %}<img id="main-product-image" src="{{ product.image.url }}" alt="{{ product.name }}">{% elif product.image_url %}<img id="main-product-image" src="{{ product.image_url }}" alt="{{ product.name }}">{% else %}<div class="image-placeholder"><span>Y</span></div>{% endif %}</div>
+    <div class="detail-main-image">{% if product.image %}<img id="main-product-image" src="{{ product.image.url }}" alt="{{ product.name }}" title="Agrandir la photo">{% elif product.image_url %}<img id="main-product-image" src="{{ product.image_url }}" alt="{{ product.name }}" title="Agrandir la photo">{% else %}<div class="image-placeholder"><span>Y</span></div>{% endif %}</div>
     {% if gallery %}<div class="gallery-thumbs">{% for item in gallery %}{% if item.image %}<button type="button" class="gallery-thumb" data-image="{{ item.image.url }}"><img src="{{ item.image.url }}" alt="{{ item.alt_text|default:product.name }}"></button>{% elif item.image_url %}<button type="button" class="gallery-thumb" data-image="{{ item.image_url }}"><img src="{{ item.image_url }}" alt="{{ item.alt_text|default:product.name }}"></button>{% endif %}{% endfor %}</div>{% endif %}
   </div>
-  <div class="detail-info"><span class="eyebrow">{{ product.category.name|upper }}</span><h1>{{ product.name }}</h1><div class="detail-price">{{ product.price|floatformat:0 }} <span>FCFA</span>{% if product.compare_at_price %}<del>{{ product.compare_at_price|floatformat:0 }} FCFA</del>{% endif %}</div><p class="detail-description">{{ product.description }}</p>
+  <div class="detail-info"><span class="eyebrow">{{ product.category.name|upper }}</span><h1>{{ product.name }}</h1><div class="detail-price">{{ product.price|floatformat:0 }} <span>FCFA</span>{% if product.compare_at_price %}<del>{{ product.compare_at_price|floatformat:0 }} FCFA</del>{% endif %}</div>{% if review_count %}<a class="product-rating" href="#product-reviews">★ {{ review_average|floatformat:1 }} · {{ review_count }} avis</a>{% endif %}<p class="detail-description">{{ product.description }}</p>{% if product.color %}<p class="product-color">Couleur : {{ product.color }}</p>{% endif %}
+    {% if user.is_authenticated %}<form method="post" action="{% url 'favori_basculer' product.id %}" class="product-favorite-form">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="button button-outline" type="submit">{% if favorited %}♥ Retirer des favoris{% else %}♡ Ajouter aux favoris{% endif %}</button></form>{% endif %}
     {% if product.stock > 0 %}<form class="add-cart-form" action="{% url 'panier_ajouter' %}" method="post">{% csrf_token %}<input type="hidden" name="product_id" value="{{ product.id }}">{% if product.sizes %}<fieldset class="size-fieldset"><legend>Choisir une taille <span>*</span></legend><div class="size-options">{% for size in product.sizes %}<label><input type="radio" name="size" value="{{ size }}" required><span>{{ size }}</span></label>{% endfor %}</div></fieldset>{% endif %}<label class="quantity-label">Quantité <input type="number" name="quantity" value="1" min="1" max="{{ product.stock }}"></label><button class="button button-dark add-cart-button" type="submit">Ajouter au panier <span>↗</span></button><p class="form-feedback" aria-live="polite"></p></form>{% else %}<p class="sold-out">Cette pièce n’est plus disponible pour le moment.</p>{% endif %}
-    <div class="product-accordions">{% if product.material %}<details><summary>Matières</summary><p>{{ product.material }}</p></details>{% endif %}{% if product.care_instructions %}<details><summary>Conseils d’entretien</summary><p>{{ product.care_instructions }}</p></details>{% endif %}<details><summary>Livraison & retours</summary><p>Livraison à Abidjan et dans toute la Côte d’Ivoire. Les détails sont confirmés lors de la commande.</p></details></div>
+    <div class="product-accordions">{% if product.material %}<details><summary>Matières</summary><p>{{ product.material }}</p></details>{% endif %}{% if product.size_guide %}<details><summary>Guide des tailles</summary><p>{{ product.size_guide|linebreaksbr }}</p></details>{% endif %}{% if product.care_instructions %}<details><summary>Conseils d’entretien</summary><p>{{ product.care_instructions }}</p></details>{% endif %}<details><summary>Livraison & retours</summary><p>Livraison à Abidjan et dans toute la Côte d’Ivoire. Après livraison, demande de retour possible sous 14 jours depuis votre commande.</p></details></div>
   </div>
 </section>
+<section class="section product-reviews" id="product-reviews"><div class="section-heading"><div><span class="eyebrow">EXPÉRIENCE CLIENT</span><h2>Avis vérifiés{% if review_count %} · {{ review_count }}{% endif %}</h2></div>{% if review_average %}<strong class="review-average">★ {{ review_average|floatformat:1 }} / 5</strong>{% endif %}</div>
+  {% if verified_buyer %}<form method="post" action="{% url 'avis_ajouter' product.slug %}" class="review-form">{% csrf_token %}<h3>{% if user_review %}Modifier votre avis{% else %}Vous avez acheté cette pièce ?{% endif %}</h3>{{ review_form.as_p }}<button class="button button-dark" type="submit">{% if user_review %}Mettre à jour{% else %}Publier mon avis{% endif %}</button></form>{% elif not user.is_authenticated %}<p><a class="text-link" href="{% url 'connexion' %}?next={{ request.path }}">Connectez-vous</a> après votre achat pour laisser un avis vérifié.</p>{% endif %}
+  <div class="review-list">{% for review in reviews %}<article class="review-entry"><div><strong>{{ review.user.first_name|default:review.user.email }}</strong><span class="review-verified">Achat vérifié</span></div><span class="review-stars" aria-label="Note {{ review.rating }} sur 5">{% for _ in '12345' %}{% if forloop.counter <= review.rating %}★{% else %}☆{% endif %}{% endfor %}</span>{% if review.comment %}<p>{{ review.comment|linebreaksbr }}</p>{% endif %}<time datetime="{{ review.created_at|date:'c' }}">{{ review.created_at|date:'j F Y' }}</time></article>{% empty %}<p class="empty-review">Aucun avis pour cette pièce pour le moment.</p>{% endfor %}</div>
+</section>
+{% if recommendations %}<section class="section recommendation-section"><div class="section-heading"><div><span class="eyebrow">À DÉCOUVRIR AUSSI</span><h2>Dans le même univers</h2></div><a class="text-link" href="{% url 'catalogue' %}?categorie={{ product.category.slug }}">Toute la sélection ↗</a></div><div class="product-grid">{% for product in recommendations %}{% include 'boutique/_product_card.html' %}{% endfor %}</div></section>{% endif %}
 {% endblock %}
-{% block scripts %}<script>document.querySelectorAll('.gallery-thumb').forEach(button=>button.addEventListener('click',()=>{document.getElementById('main-product-image').src=button.dataset.image}));</script>{% endblock %}
+{% block scripts %}
+<dialog class="image-zoom-dialog" id="product-image-zoom" aria-label="Photo agrandie de {{ product.name }}"><button class="image-zoom-close" type="button" aria-label="Fermer l’image agrandie">×</button><img id="zoom-product-image" src="" alt="{{ product.name }}"></dialog>
+<script>
+(() => {
+  const mainImage = document.getElementById('main-product-image');
+  const dialog = document.getElementById('product-image-zoom');
+  if (!mainImage || !dialog) return;
+  const zoomImage = document.getElementById('zoom-product-image');
+  mainImage.addEventListener('click', () => {
+    zoomImage.src = mainImage.src;
+    dialog.showModal();
+  });
+  document.querySelector('.image-zoom-close').addEventListener('click', () => dialog.close());
+  dialog.addEventListener('click', (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  document.querySelectorAll('.gallery-thumb').forEach((button) => {
+    button.addEventListener('click', () => {
+      mainImage.src = button.dataset.image;
+    });
+  });
+})();
+</script>
+{% endblock %}

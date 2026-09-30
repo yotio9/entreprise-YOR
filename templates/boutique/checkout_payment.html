@@ -34,6 +34,9 @@
       <span class="eyebrow">VOTRE COMMANDE</span>
       {% for line in lines %}<div class="checkout-item"><span>{{ line.quantity }} × {{ line.product.name }}{% if line.size %}<small> · {{ line.size }}</small>{% endif %}</span><strong>{{ line.line_total|floatformat:0 }}</strong></div>{% endfor %}
       <div class="summary-row"><span>Sous-total</span><strong>{{ subtotal|floatformat:0 }} FCFA</strong></div>
+      {% if coupon %}<div class="summary-row"><span>Remise · {{ coupon.code }}</span><strong>−{{ discount|floatformat:0 }} FCFA</strong></div>{% endif %}
+      {% if loyalty_points_available %}<label class="loyalty-check"><input type="checkbox" name="use_loyalty_points" value="1" {% if use_loyalty_points %}checked{% endif %}> Utiliser mes {{ loyalty_points_available }} points (10 FCFA / point)</label>{% if loyalty_points_used %}<div class="summary-row"><span>Remise fidélité · {{ loyalty_points_used }} points</span><strong>−{{ loyalty_discount|floatformat:0 }} FCFA</strong></div>{% endif %}{% endif %}
+      <div class="summary-row"><span>Total estimé</span><strong>{{ total|floatformat:0 }} FCFA</strong></div>
       <p class="summary-note">Frais de livraison à confirmer selon votre adresse.</p>
       <button class="button button-dark full-button" type="submit">Créer ma commande <span>↗</span></button>
       <p class="secure-note">Vos informations sont utilisées uniquement pour cette commande.</p>

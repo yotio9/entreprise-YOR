@@ -1,0 +1,10 @@
+Bonjour {{ order.customer_name }},
+
+Votre demande ({{ return_request.get_request_type_display }}) pour la commande Yorwani {{ order.reference }} a pour statut : {{ return_request.get_status_display }}.
+{% if return_request.admin_note %}
+Message de la boutique : {{ return_request.admin_note }}
+{% endif %}
+
+Nous vous contacterons si une information complémentaire est nécessaire.
+
+La maison Yorwani

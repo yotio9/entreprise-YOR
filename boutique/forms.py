@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.core.validators import RegexValidator
 
-from .models import Product
+from .models import Order, Product, ReturnRequest, Review
 
 User = get_user_model()
 
@@ -67,7 +67,7 @@ class ProductForm(forms.ModelForm):
     class Meta:
         model = Product
         fields = (
-            'category', 'name', 'description', 'material', 'care_instructions',
+            'category', 'name', 'description', 'material', 'color', 'size_guide', 'care_instructions',
             'price', 'compare_at_price', 'sizes', 'stock', 'image', 'image_url',
             'is_featured', 'is_active',
         )
@@ -76,6 +76,8 @@ class ProductForm(forms.ModelForm):
             'name': 'Nom de l’article',
             'description': 'Description',
             'material': 'Matière',
+            'color': 'Couleur',
+            'size_guide': 'Guide des tailles / mesures',
             'care_instructions': 'Conseils d’entretien',
             'price': 'Prix (FCFA)',
             'compare_at_price': 'Ancien prix (optionnel)',
@@ -88,6 +90,7 @@ class ProductForm(forms.ModelForm):
         }
         widgets = {
             'description': forms.Textarea(attrs={'rows': 4}),
+            'size_guide': forms.Textarea(attrs={'rows': 3}),
             'care_instructions': forms.Textarea(attrs={'rows': 3}),
         }
 
@@ -101,3 +104,53 @@ class ProductForm(forms.ModelForm):
         if isinstance(value, str):
             return [size.strip().upper() for size in value.split(',') if size.strip()]
         return value or []
+
+
+class ReviewForm(forms.ModelForm):
+    rating = forms.TypedChoiceField(
+        label='Note',
+        choices=[(value, f'{value} / 5') for value in range(5, 0, -1)],
+        coerce=int,
+    )
+
+    class Meta:
+        model = Review
+        fields = ('rating', 'comment')
+        labels = {'comment': 'Votre avis'}
+        widgets = {'comment': forms.Textarea(attrs={'rows': 4, 'maxlength': 1200})}
+
+
+class ReturnRequestForm(forms.ModelForm):
+    class Meta:
+        model = ReturnRequest
+        fields = ('request_type', 'reason')
+        labels = {
+            'request_type': 'Type de demande',
+            'reason': 'Pourquoi souhaitez-vous retourner ou échanger la commande ?',
+        }
+        widgets = {'reason': forms.Textarea(attrs={'rows': 4, 'maxlength': 1200})}
+
+
+class FulfillmentForm(forms.ModelForm):
+    class Meta:
+        model = Order
+        fields = ('status', 'shipping_carrier', 'tracking_number')
+        labels = {
+            'status': 'État de la commande',
+            'shipping_carrier': 'Transporteur',
+            'tracking_number': 'Numéro de suivi',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        allowed_statuses = {
+            Order.Status.CONFIRMED,
+            Order.Status.PREPARING,
+            Order.Status.SHIPPED,
+            Order.Status.DELIVERED,
+        }
+        if self.instance.status not in allowed_statuses:
+            allowed_statuses.add(self.instance.status)
+        self.fields['status'].choices = [
+            (value, label) for value, label in Order.Status.choices if value in allowed_statuses
+        ]

@@ -6,6 +6,7 @@
   <div class="order-main">
     <div class="notice-panel"><span class="notice-icon">01</span><div><span class="eyebrow">PAIEMENT À LA LIVRAISON</span><h2>{{ order.total|floatformat:0 }} FCFA à régler au livreur</h2><p>Le paiement sera perçu lors de la remise de votre commande.</p><span class="status-pill">{{ order.get_payment_status_display }}</span></div></div>
     <div class="notice-panel"><span class="notice-icon">02</span><div><span class="eyebrow">DÉLAI ESTIMÉ</span><p>La livraison est estimée sous 5 jours après votre commande.</p></div></div>
+    {% include 'boutique/_order_tracking.html' %}
     <a class="continue-shopping" href="{% url 'historique_commandes' %}">Voir mes commandes</a>
   </div>
   <aside class="cart-summary order-summary"><span class="eyebrow">RÉCAPITULATIF</span>
