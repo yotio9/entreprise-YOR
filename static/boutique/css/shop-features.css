@@ -119,6 +119,45 @@
   resize: vertical;
 }
 
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.order-status-awaiting_payment,
+.payment-status-pending { color: #805712; background: #f5e8c9; }
+.order-status-confirmed,
+.payment-status-confirmed { color: #245c3c; background: #dcefe2; }
+.order-status-preparing { color: #315a83; background: #dceaf7; }
+.order-status-shipped { color: #514085; background: #e9e2f6; }
+.order-status-delivered { color: #245b59; background: #d9efed; }
+.order-status-cancelled { color: #873b35; background: #f4dfdc; }
+.payment-status-due_on_delivery { color: #82521e; background: #f6e5d2; }
+.visibility-pill { display: inline-block; border-radius: 999px; padding: 3px 10px; font-size: 13px; font-weight: 600; }
+.visibility-on { color: #245c3c; background: #dcefe2; }
+.visibility-off { color: #68665f; background: #e9e8e2; }
+.admin-filters { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; }
+.admin-filters a { padding: 7px 11px; border: 1px solid var(--line); color: #68665f; font-size: 14px; }
+.admin-filters a.active { border-color: var(--ink); background: var(--ink); color: #fff; }
+.admin-filters label { color: var(--muted); font-size: 14px; }
+.admin-filters select { min-height: 42px; padding: 7px 10px; border: 1px solid var(--line); background: #fff; }
+.admin-filters .button { min-height: 42px; }
+.review-admin-comment { display: inline-block; max-width: 360px; margin-top: 4px; white-space: normal; color: #68665f; }
+.return-reason { min-width: 190px; max-width: 320px; white-space: normal; }
+.return-status-pending { color: #805712; background: #f5e8c9; }
+.return-status-approved,
+.return-status-received { color: #315a83; background: #dceaf7; }
+.return-status-rejected { color: #873b35; background: #f4dfdc; }
+.return-status-refunded { color: #245c3c; background: #dcefe2; }
+.admin-help { color: var(--muted); font-size: 14px; }
+.admin-form-compact { max-width: none; border: 0; padding: 18px 0 0; background: transparent; }
+
 .review-entry {
   max-width: 760px;
   padding: 18px 0;
@@ -191,6 +230,7 @@
 }
 
 @media (max-width: 600px) {
+  .admin-filters { flex-wrap: wrap; }
   .catalog-filters {
     grid-template-columns: 1fr 1fr;
   }

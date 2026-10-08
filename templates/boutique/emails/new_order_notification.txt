@@ -10,7 +10,8 @@ Paiement : {{ order.get_payment_method_display }}
 État du paiement : {{ order.get_payment_status_display }}
 
 Articles :
-{% for item in order.items.all %}- {{ item.quantity }} x {{ item.product_name }}{% if item.size %} (taille {{ item.size }}){% endif %} : {{ item.line_total|floatformat:0 }} FCFA
+{% for item in order.items.all %}- {{ item.quantity }} x {{ item.product_name }}{% if item.size %} (taille {{ item.size }}){% endif %} : {{ item.line_total|floatformat:0 }} FCFA{% if item.product and item.product.source_url %}
+  Lien de provenance : {{ item.product.source_url }}{% endif %}
 {% endfor %}
 Total : {{ order.total|floatformat:0 }} FCFA
 

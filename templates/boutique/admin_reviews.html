@@ -1,0 +1,9 @@
+{% extends 'boutique/admin_base.html' %}
+{% block title %}Avis clients — Maison Yorwani{% endblock %}
+{% block admin_content %}
+<div class="admin-heading"><div><span class="eyebrow">BOUTIQUE</span><h1>Avis clients</h1><p>Consultez les avis et choisissez ceux qui sont visibles dans la boutique.</p></div></div>
+<div class="admin-filters"><a class="{% if not approval_filter %}active{% endif %}" href="{% url 'admin_avis_clients' %}">Tous</a><a class="{% if approval_filter == 'pending' %}active{% endif %}" href="?approbation=pending">À examiner</a><a class="{% if approval_filter == 'approved' %}active{% endif %}" href="?approbation=approved">Publiés</a></div>
+<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Article</th><th>Client</th><th>Avis</th><th>Date</th><th>Visibilité</th><th>Actions</th></tr></thead><tbody>
+{% for review in reviews %}<tr><td>{{ review.product.name }}</td><td>{{ review.user.get_full_name|default:review.user.email }}</td><td><strong>{{ review.rating }}/5</strong>{% if review.comment %}<br><span class="review-admin-comment">{{ review.comment|linebreaksbr }}</span>{% endif %}</td><td>{{ review.created_at|date:'d/m/Y H:i' }}</td><td>{% if review.is_approved %}<span class="visibility-pill visibility-on">Publié</span>{% else %}<span class="visibility-pill visibility-off">Masqué</span>{% endif %}</td><td><div class="table-actions"><form method="post" action="{% url 'admin_avis_approbation' review.id %}">{% csrf_token %}<button type="submit">{% if review.is_approved %}Masquer{% else %}Publier{% endif %}</button></form><form method="post" action="{% url 'admin_avis_supprimer' review.id %}" onsubmit="return confirm('Supprimer cet avis définitivement ?')">{% csrf_token %}<button type="submit">Supprimer</button></form></div></td></tr>{% empty %}<tr><td colspan="6" class="table-empty">Aucun avis pour ce filtre.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

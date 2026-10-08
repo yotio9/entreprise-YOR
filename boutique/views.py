@@ -22,13 +22,14 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from .forms import EmailAuthenticationForm, FulfillmentForm, ProductForm, RegistrationForm, ReturnRequestForm, ReviewForm
+from .forms import CategoryForm, CouponForm, EmailAuthenticationForm, FulfillmentForm, ProductForm, RegistrationForm, ReturnAdminForm, ReturnRequestForm, ReviewForm
 from .models import Category, Coupon, Favorite, Order, OrderItem, Product, ProductImage, ReturnRequest, Review
 from .notifications import (
 	send_new_order_notification_email,
 	send_order_received_email,
 	send_order_status_email,
 	send_return_request_notifications,
+	send_return_status_email,
 	send_payment_confirmed_email,
 	send_wave_payment_link_email,
 )
@@ -569,6 +570,7 @@ admin_required = user_passes_test(lambda user: user.is_authenticated and user.is
 def dashboard(request):
 	context = {
 		'product_count': Product.objects.count(),
+		'category_count': Category.objects.count(),
 		'order_count': Order.objects.count(),
 		'pending_count': Order.objects.filter(payment_status=Order.PaymentStatus.PENDING).count(),
 		'recent_orders': Order.objects.select_related('user')[:6],
@@ -650,6 +652,147 @@ def admin_accounting_export(request):
 def admin_products(request):
 	products = Product.objects.select_related('category').order_by('-updated_at')
 	return render(request, 'boutique/admin_products.html', {'products': products})
+
+
+@admin_required
+def admin_categories(request):
+	categories = Category.objects.annotate(product_count=Count('products')).order_by('name')
+	return render(request, 'boutique/admin_categories.html', {'categories': categories})
+
+
+def _category_form_view(request, category=None):
+	form = CategoryForm(request.POST or None, instance=category)
+	if request.method == 'POST' and form.is_valid():
+		category = form.save()
+		messages.success(request, f'La collection « {category.name} » a été enregistrée.')
+		return redirect('admin_collections')
+	return render(request, 'boutique/admin_category_form.html', {'form': form, 'category': category})
+
+
+@admin_required
+def category_create(request):
+	return _category_form_view(request)
+
+
+@admin_required
+def category_edit(request, category_id):
+	return _category_form_view(request, get_object_or_404(Category, pk=category_id))
+
+
+@admin_required
+@require_POST
+def category_delete(request, category_id):
+	category = get_object_or_404(Category, pk=category_id)
+	if category.products.exists():
+		messages.error(request, 'Cette collection contient encore des articles. Réaffectez-les avant de la supprimer.')
+	else:
+		name = category.name
+		category.delete()
+		messages.success(request, f'La collection « {name} » a été supprimée.')
+	return redirect('admin_collections')
+
+
+@admin_required
+def admin_coupons(request):
+	coupons = Coupon.objects.order_by('code')
+	return render(request, 'boutique/admin_coupons.html', {'coupons': coupons})
+
+
+def _coupon_form_view(request, coupon=None):
+	form = CouponForm(request.POST or None, instance=coupon)
+	if request.method == 'POST' and form.is_valid():
+		coupon = form.save()
+		messages.success(request, f'Le code promo « {coupon.code} » a été enregistré.')
+		return redirect('admin_codes_promo')
+	return render(request, 'boutique/admin_coupon_form.html', {'form': form, 'coupon': coupon})
+
+
+@admin_required
+def coupon_create(request):
+	return _coupon_form_view(request)
+
+
+@admin_required
+def coupon_edit(request, coupon_id):
+	return _coupon_form_view(request, get_object_or_404(Coupon, pk=coupon_id))
+
+
+@admin_required
+@require_POST
+def coupon_delete(request, coupon_id):
+	coupon = get_object_or_404(Coupon, pk=coupon_id)
+	code = coupon.code
+	coupon.delete()
+	messages.success(request, f'Le code promo « {code} » a été supprimé.')
+	return redirect('admin_codes_promo')
+
+
+@admin_required
+def admin_reviews(request):
+	reviews = Review.objects.select_related('product', 'user').order_by('-created_at')
+	approval = request.GET.get('approbation', '')
+	if approval in ('approved', 'pending'):
+		reviews = reviews.filter(is_approved=(approval == 'approved'))
+	return render(request, 'boutique/admin_reviews.html', {'reviews': reviews, 'approval_filter': approval})
+
+
+@admin_required
+@require_POST
+def review_toggle_approval(request, review_id):
+	review = get_object_or_404(Review, pk=review_id)
+	review.is_approved = not review.is_approved
+	review.save(update_fields=('is_approved', 'updated_at'))
+	messages.success(request, 'Avis approuvé.' if review.is_approved else 'Avis masqué de la boutique.')
+	return redirect('admin_avis_clients')
+
+
+@admin_required
+@require_POST
+def review_delete(request, review_id):
+	review = get_object_or_404(Review, pk=review_id)
+	review.delete()
+	messages.success(request, 'Avis supprimé.')
+	return redirect('admin_avis_clients')
+
+
+@admin_required
+def admin_returns(request):
+	returns = ReturnRequest.objects.select_related('order', 'order__user').order_by('-created_at')
+	status = request.GET.get('statut', '')
+	if status in dict(ReturnRequest.Status.choices):
+		returns = returns.filter(status=status)
+	return render(request, 'boutique/admin_returns.html', {
+		'return_requests': returns,
+		'status_filter': status,
+		'status_choices': ReturnRequest.Status.choices,
+	})
+
+
+@admin_required
+def admin_return_edit(request, return_id):
+	return_request = get_object_or_404(ReturnRequest.objects.select_related('order', 'order__user'), pk=return_id)
+	form = ReturnAdminForm(request.POST or None, instance=return_request)
+	if request.method == 'POST' and form.is_valid():
+		with transaction.atomic():
+			locked_request = ReturnRequest.objects.select_for_update().get(pk=return_id)
+			previous_status = locked_request.status
+			return_request = form.save(commit=False)
+			return_request.pk = locked_request.pk
+			return_request.save()
+			if return_request.status == ReturnRequest.Status.REFUNDED and previous_status != ReturnRequest.Status.REFUNDED:
+				order = Order.objects.select_for_update().get(pk=return_request.order_id)
+				customer = get_user_model().objects.select_for_update().get(pk=order.user_id)
+				customer.loyalty_points = max(
+					customer.loyalty_points - order.loyalty_points_awarded + order.loyalty_points_used,
+					0,
+				)
+				customer.save(update_fields=('loyalty_points',))
+		if previous_status != return_request.status and not send_return_status_email(return_request):
+			messages.warning(request, 'Le statut est enregistré, mais l’e-mail client n’a pas pu être envoyé.')
+		else:
+			messages.success(request, 'La demande de retour a été mise à jour.')
+		return redirect('admin_retours')
+	return render(request, 'boutique/admin_return_form.html', {'form': form, 'return_request': return_request})
 
 
 def _product_form_view(request, product=None):

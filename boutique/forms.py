@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.core.validators import RegexValidator
 
-from .models import Order, Product, ReturnRequest, Review
+from .models import Category, Coupon, Order, Product, ReturnRequest, Review
 
 User = get_user_model()
 
@@ -68,11 +68,11 @@ class ProductForm(forms.ModelForm):
         model = Product
         fields = (
             'category', 'name', 'description', 'material', 'color', 'size_guide', 'care_instructions',
-            'price', 'compare_at_price', 'sizes', 'stock', 'image', 'image_url',
+            'price', 'compare_at_price', 'sizes', 'stock', 'image', 'image_url', 'source_url',
             'is_featured', 'is_active',
         )
         labels = {
-            'category': 'Catégorie',
+            'category': 'Collection',
             'name': 'Nom de l’article',
             'description': 'Description',
             'material': 'Matière',
@@ -85,6 +85,7 @@ class ProductForm(forms.ModelForm):
             'stock': 'Stock disponible',
             'image': 'Image principale (fichier)',
             'image_url': 'Image principale (URL, optionnelle)',
+            'source_url': 'Lien de provenance (où avez-vous trouvé cet article ?)',
             'is_featured': 'Mettre à la une',
             'is_active': 'Visible en boutique',
         }
@@ -104,6 +105,70 @@ class ProductForm(forms.ModelForm):
         if isinstance(value, str):
             return [size.strip().upper() for size in value.split(',') if size.strip()]
         return value or []
+
+
+class CategoryForm(forms.ModelForm):
+    class Meta:
+        model = Category
+        fields = ('name', 'description', 'is_active')
+        labels = {
+            'name': 'Nom de la collection',
+            'description': 'Description',
+            'is_active': 'Visible dans la boutique',
+        }
+        widgets = {'description': forms.Textarea(attrs={'rows': 3})}
+
+
+class CouponForm(forms.ModelForm):
+    class Meta:
+        model = Coupon
+        fields = (
+            'code', 'discount_type', 'discount_value', 'minimum_amount',
+            'starts_at', 'expires_at', 'maximum_uses', 'is_active',
+        )
+        labels = {
+            'code': 'Code promo',
+            'discount_type': 'Type de réduction',
+            'discount_value': 'Valeur de la réduction',
+            'minimum_amount': 'Montant minimum du panier (FCFA)',
+            'starts_at': 'Valide à partir du',
+            'expires_at': 'Date d’expiration',
+            'maximum_uses': 'Nombre maximal d’utilisations',
+            'is_active': 'Code actif',
+        }
+        widgets = {
+            'starts_at': forms.DateTimeInput(attrs={'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M'),
+            'expires_at': forms.DateTimeInput(attrs={'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M'),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name in ('starts_at', 'expires_at'):
+            self.fields[field_name].input_formats = ['%Y-%m-%dT%H:%M']
+            if self.instance.pk and self.initial.get(field_name):
+                self.initial[field_name] = self.initial[field_name].strftime('%Y-%m-%dT%H:%M')
+
+    def clean_code(self):
+        return self.cleaned_data['code'].strip().upper()
+
+    def clean(self):
+        cleaned_data = super().clean()
+        starts_at = cleaned_data.get('starts_at')
+        expires_at = cleaned_data.get('expires_at')
+        if starts_at and expires_at and expires_at <= starts_at:
+            self.add_error('expires_at', 'La date d’expiration doit être après la date de début.')
+        return cleaned_data
+
+
+class ReturnAdminForm(forms.ModelForm):
+    class Meta:
+        model = ReturnRequest
+        fields = ('status', 'admin_note')
+        labels = {
+            'status': 'État de la demande',
+            'admin_note': 'Note interne',
+        }
+        widgets = {'admin_note': forms.Textarea(attrs={'rows': 3})}
 
 
 class ReviewForm(forms.ModelForm):

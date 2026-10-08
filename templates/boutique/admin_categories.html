@@ -1,0 +1,8 @@
+{% extends 'boutique/admin_base.html' %}
+{% block title %}Collections — Maison Yorwani{% endblock %}
+{% block admin_content %}
+<div class="admin-heading"><div><span class="eyebrow">CATALOGUE</span><h1>Les collections</h1><p>Organisez les articles par collection. Vous pourrez choisir une collection dans chaque fiche article.</p></div><a class="button button-dark" href="{% url 'admin_collection_nouvelle' %}">+ Nouvelle collection</a></div>
+<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Collection</th><th>Description</th><th>Articles</th><th>Visibilité</th><th>Actions</th></tr></thead><tbody>
+{% for category in categories %}<tr><td><a href="{% url 'admin_collection_modifier' category.id %}">{{ category.name }}</a></td><td>{{ category.description|default:'—' }}</td><td>{{ category.product_count }}</td><td>{% if category.is_active %}<span class="visibility-pill visibility-on">En ligne</span>{% else %}<span class="visibility-pill visibility-off">Masquée</span>{% endif %}</td><td><div class="table-actions"><a href="{% url 'admin_collection_modifier' category.id %}">Modifier</a><form method="post" action="{% url 'admin_collection_supprimer' category.id %}" onsubmit="return confirm('Supprimer cette collection ?')">{% csrf_token %}<button type="submit">Supprimer</button></form></div></td></tr>{% empty %}<tr><td colspan="5" class="table-empty">Créez une première collection pour organiser vos articles.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

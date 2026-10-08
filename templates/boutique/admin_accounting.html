@@ -46,7 +46,7 @@
           <td>{{ order.created_at|date:'d/m/Y' }}</td>
           <td>{{ order.get_payment_method_display }}</td>
           <td>{{ order.total|floatformat:0 }} FCFA</td>
-          <td><span class="status-pill">{{ order.get_payment_status_display }}</span></td>
+          <td>{% include 'boutique/admin_payment_status_badge.html' %}</td>
         </tr>
       {% empty %}
         <tr><td colspan="6" class="table-empty">Aucun montant en attente d’encaissement.</td></tr>

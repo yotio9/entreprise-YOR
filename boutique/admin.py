@@ -40,7 +40,7 @@ class YorwaniUserAdmin(UserAdmin):
 
 @admin.register(Product, site=owner_admin_site)
 class ProductAdmin(admin.ModelAdmin):
-	list_display = ('name', 'category', 'color', 'price', 'stock', 'is_active', 'is_featured')
+	list_display = ('name', 'category', 'color', 'price', 'stock', 'source_url', 'is_active', 'is_featured')
 	list_filter = ('category', 'color', 'is_active', 'is_featured')
 	search_fields = ('name', 'description')
 	inlines = (ProductImageInline,)

@@ -55,6 +55,7 @@ class Product(models.Model):
 	stock = models.PositiveIntegerField(default=0)
 	image = models.ImageField(upload_to='products/', blank=True)
 	image_url = models.URLField(blank=True)
+	source_url = models.URLField(max_length=2000, blank=True, verbose_name='Lien de provenance')
 	is_featured = models.BooleanField(default=False)
 	is_active = models.BooleanField(default=True)
 	created_at = models.DateTimeField(auto_now_add=True)

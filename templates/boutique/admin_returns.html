@@ -1,0 +1,9 @@
+{% extends 'boutique/admin_base.html' %}
+{% block title %}Retours — Maison Yorwani{% endblock %}
+{% block admin_content %}
+<div class="admin-heading"><div><span class="eyebrow">SERVICE CLIENT</span><h1>Retours et échanges</h1><p>Examinez les demandes et mettez à jour leur avancement.</p></div></div>
+<form method="get" class="admin-filters"><label for="return-status">État de la demande</label><select id="return-status" name="statut"><option value="">Tous les états</option>{% for value,label in status_choices %}<option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><button class="button button-dark" type="submit">Filtrer</button></form>
+<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Commande</th><th>Client</th><th>Type</th><th>Motif</th><th>Reçue le</th><th>État</th><th>Action</th></tr></thead><tbody>
+{% for item in return_requests %}<tr><td><a href="{% url 'admin_commande_detail' item.order.reference %}">{{ item.order.reference }}</a></td><td>{{ item.order.customer_name }}<br><small>{{ item.order.customer_email }}</small></td><td>{{ item.get_request_type_display }}</td><td class="return-reason">{{ item.reason }}</td><td>{{ item.created_at|date:'d/m/Y' }}</td><td><span class="status-pill return-status-{{ item.status }}">{{ item.get_status_display }}</span></td><td><a href="{% url 'admin_retour_modifier' item.id %}">Examiner / modifier</a></td></tr>{% empty %}<tr><td colspan="7" class="table-empty">Aucune demande de retour pour ce filtre.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

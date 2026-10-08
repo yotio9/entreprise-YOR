@@ -1,0 +1,8 @@
+{% extends 'boutique/admin_base.html' %}
+{% block title %}Codes promo — Maison Yorwani{% endblock %}
+{% block admin_content %}
+<div class="admin-heading"><div><span class="eyebrow">VENTES</span><h1>Codes promo</h1><p>Créez et gérez les réductions proposées à vos clients.</p></div><a class="button button-dark" href="{% url 'admin_code_promo_nouveau' %}">+ Nouveau code promo</a></div>
+<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Code</th><th>Réduction</th><th>Minimum</th><th>Utilisations</th><th>Validité</th><th>État</th><th>Actions</th></tr></thead><tbody>
+{% for coupon in coupons %}<tr><td><strong>{{ coupon.code }}</strong></td><td>{% if coupon.discount_type == 'percent' %}{{ coupon.discount_value|floatformat:'-2' }} %{% else %}{{ coupon.discount_value|floatformat:0 }} FCFA{% endif %}</td><td>{{ coupon.minimum_amount|floatformat:0 }} FCFA</td><td>{{ coupon.uses_count }} / {{ coupon.maximum_uses|default:'∞' }}</td><td>Du {{ coupon.starts_at|date:'d/m/Y' }}{% if coupon.expires_at %}<br>au {{ coupon.expires_at|date:'d/m/Y' }}{% else %}<br>Sans expiration{% endif %}</td><td>{% if coupon.is_active %}<span class="visibility-pill visibility-on">Actif</span>{% else %}<span class="visibility-pill visibility-off">Désactivé</span>{% endif %}</td><td><div class="table-actions"><a href="{% url 'admin_code_promo_modifier' coupon.id %}">Modifier</a><form method="post" action="{% url 'admin_code_promo_supprimer' coupon.id %}" onsubmit="return confirm('Supprimer ce code promo ?')">{% csrf_token %}<button type="submit">Supprimer</button></form></div></td></tr>{% empty %}<tr><td colspan="7" class="table-empty">Aucun code promo. Créez le premier.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

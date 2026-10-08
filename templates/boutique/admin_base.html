@@ -6,11 +6,12 @@
 		<nav>
 			<a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">Vue d’ensemble</a>
 			<a href="{% url 'admin_articles' %}" class="{% if 'article' in request.resolver_match.url_name %}active{% endif %}">Articles</a>
+			<a href="{% url 'admin_collections' %}" class="{% if 'collection' in request.resolver_match.url_name %}active{% endif %}">Collections</a>
 			<a href="{% url 'admin_commandes' %}" class="{% if 'commande' in request.resolver_match.url_name or 'paiement' in request.resolver_match.url_name %}active{% endif %}">Commandes</a>
 			<a href="{% url 'admin_comptabilite' %}" class="{% if request.resolver_match.url_name == 'admin_comptabilite' %}active{% endif %}">Comptabilité</a>
-			<a href="{% url 'owner_admin:boutique_coupon_changelist' %}">Codes promo</a>
-			<a href="{% url 'owner_admin:boutique_review_changelist' %}">Avis clients</a>
-			<a href="{% url 'owner_admin:boutique_returnrequest_changelist' %}">Retours</a>
+			<a href="{% url 'admin_codes_promo' %}" class="{% if 'code' in request.resolver_match.url_name %}active{% endif %}">Codes promo</a>
+			<a href="{% url 'admin_avis_clients' %}" class="{% if 'avis' in request.resolver_match.url_name %}active{% endif %}">Avis clients</a>
+			<a href="{% url 'admin_retours' %}" class="{% if 'retour' in request.resolver_match.url_name %}active{% endif %}">Retours</a>
 		</nav>
 		<a href="{% url 'accueil' %}" class="admin-back">← Voir la boutique</a>
 	</aside>
