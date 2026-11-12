@@ -1,0 +1,93 @@
+.zodiac-group {
+  padding-top: 34px;
+  scroll-margin-top: 24px;
+}
+
+.zodiac-group + .zodiac-group {
+  margin-top: 42px;
+  border-top: 1px solid var(--line);
+}
+
+.zodiac-group .section-heading h2 {
+  font-size: 34px;
+}
+
+.horosco-product-sign {
+  margin: -9px 0 12px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.horosco-product-sign strong {
+  color: #92723a;
+  font-weight: 600;
+}
+
+.horosco-customizer {
+  display: grid;
+  gap: 13px;
+  margin: 24px 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+}
+
+.horosco-customizer legend {
+  padding: 0 8px;
+  font-family: var(--serif);
+  font-size: 22px;
+}
+
+.horosco-customizer legend span {
+  color: #9c7b37;
+}
+
+.horosco-customizer > p {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.horosco-sign-field,
+.horosco-colors label {
+  display: grid;
+  gap: 7px;
+  font-size: 14px;
+}
+
+.horosco-sign-field select {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: var(--white);
+}
+
+.horosco-colors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.horosco-colors input {
+  width: 100%;
+  height: 42px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  background: var(--white);
+}
+
+.personalization-summary {
+  display: block;
+  margin-top: 5px;
+  color: #68665f;
+  font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .horosco-customizer {
+    padding: 14px;
+  }
+
+  .horosco-colors {
+    gap: 10px;
+  }
+}

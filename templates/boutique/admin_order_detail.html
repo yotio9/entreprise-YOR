@@ -8,7 +8,7 @@
 <div class="admin-order-grid">
 	<section class="admin-order-panel">
 		<span class="eyebrow">ARTICLES COMMANDÉS</span>
-		{% for item in order.items.all %}<div class="admin-order-item"><span>{{ item.quantity }} × {{ item.product_name }}{% if item.size %} · {{ item.size }}{% endif %}</span><strong>{{ item.line_total|floatformat:0 }} FCFA</strong></div>{% endfor %}
+		{% for item in order.items.all %}<div class="admin-order-item"><span>{{ item.quantity }} × {{ item.product_name }}{% if item.size %} · {{ item.size }}{% endif %}{% include 'boutique/_personalization_summary.html' with personalization=item.personalization %}</span><strong>{{ item.line_total|floatformat:0 }} FCFA</strong></div>{% endfor %}
 		<div class="summary-row"><span>Total à régler</span><strong>{{ order.total|floatformat:0 }} FCFA</strong></div>
 	</section>
 	<section class="admin-order-panel">

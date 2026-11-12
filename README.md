@@ -70,3 +70,24 @@ python manage.py makemigrations --check --dry-run
 ```
 
 Pour une mise en production, utiliser HTTPS, une clé secrète dédiée, `DJANGO_DEBUG=0`, une liste `DJANGO_ALLOWED_HOSTS` exacte, et un serveur de fichiers adapté aux médias. La configuration active la redirection HTTPS et HSTS lorsque `DEBUG` est désactivé. SQLite convient au démarrage local ; un déploiement à fort trafic mérite une base PostgreSQL.# entreprise-YOR
+
+
+
+## PostgreSQL distant et worker Jumia (simulation)
+
+Le projet utilise PostgreSQL via `DATABASE_URL` dans `.env` et refuse de d?marrer si cette variable est absente. SQLite n?est plus utilis?. Les migrations et le transfert initial sont d?crits dans `DEPLOYMENT_NOTES.md`.
+
+    python manage.py migrate
+    python manage.py migrate_sqlite_to_postgres --confirm-target-empty
+
+Le transfert vérifie les nombres de lignes et les empreintes de données ; il ne copie pas les fichiers media/.
+
+Le worker Jumia est désactivé par défaut et strictement en lecture seule. Il exige PostgreSQL, une commande payée et confirmée, un lien Jumia autorisé et un plafond fournisseur saisi dans la fiche produit. CAPTCHA, connexion, prix ou variante non vérifiables entraînent une revue humaine. Il ne crée aucun panier et n’achète rien.
+
+    python manage.py queue_jumia_orders --order-ref YOR-REFERENCE --dry-run
+    python manage.py queue_jumia_orders --order-ref YOR-REFERENCE
+    $env:JUMIA_AGENT_ENABLED = "1"
+    $env:JUMIA_AGENT_MODE = "simulation"
+    python manage.py run_jumia_agent --once
+
+Voir DEPLOYMENT_NOTES.md pour Neon, Docker/Caddy, budget, sauvegardes, restauration et les étapes de mise en ligne. Aucun compte ni hébergement n’est provisionné par ce projet.

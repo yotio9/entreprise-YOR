@@ -39,7 +39,7 @@
       <span class="eyebrow">RÉCAPITULATIF</span>
       {% for item in order.items.all %}
         <div class="checkout-item">
-          <span>{{ item.quantity }} × {{ item.product_name }}{% if item.size %}<small> · {{ item.size }}</small>{% endif %}</span>
+          <span>{{ item.quantity }} × {{ item.product_name }}{% if item.size %}<small> · {{ item.size }}</small>{% endif %}{% include 'boutique/_personalization_summary.html' with personalization=item.personalization %}</span>
           <strong>{{ item.line_total|floatformat:0 }}</strong>
         </div>
       {% endfor %}

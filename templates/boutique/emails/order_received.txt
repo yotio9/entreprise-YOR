@@ -4,7 +4,7 @@ Nous avons bien reçu votre commande Yorwani {{ order.reference }}.
 Mode de paiement choisi : {{ order.get_payment_method_display }}.
 
 Récapitulatif :
-{% for item in order.items.all %}- {{ item.quantity }} × {{ item.product_name }}{% if item.size %} (taille {{ item.size }}){% endif %} : {{ item.line_total|floatformat:0 }} FCFA
+{% for item in order.items.all %}- {{ item.quantity }} × {{ item.product_name }}{% if item.size %} (taille {{ item.size }}){% endif %}{% if item.personalization.sign_label %} | signe : {{ item.personalization.sign_label }} ; couleurs : {{ item.personalization.color_primary }} et {{ item.personalization.color_secondary }}{% endif %} : {{ item.line_total|floatformat:0 }} FCFA
 {% endfor %}
 Total : {{ order.total|floatformat:0 }} FCFA
 

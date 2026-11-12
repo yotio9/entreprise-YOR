@@ -67,13 +67,14 @@ class ProductForm(forms.ModelForm):
     class Meta:
         model = Product
         fields = (
-            'category', 'name', 'description', 'material', 'color', 'size_guide', 'care_instructions',
-            'price', 'compare_at_price', 'sizes', 'stock', 'image', 'image_url', 'source_url',
+            'category', 'name', 'zodiac_sign', 'description', 'material', 'color', 'size_guide', 'care_instructions',
+            'price', 'compare_at_price', 'sizes', 'stock', 'image', 'image_url', 'source_url', 'source_price_limit',
             'is_featured', 'is_active',
         )
         labels = {
             'category': 'Collection',
             'name': 'Nom de l’article',
+            'zodiac_sign': 'Signe astrologique (collection Horosco)',
             'description': 'Description',
             'material': 'Matière',
             'color': 'Couleur',
@@ -108,15 +109,35 @@ class ProductForm(forms.ModelForm):
 
 
 class CategoryForm(forms.ModelForm):
+    products = forms.ModelMultipleChoiceField(
+        queryset=Product.objects.order_by('name'),
+        required=False,
+        label='Articles a ajouter ou deplacer vers cette collection',
+        help_text='Les articles deja dans cette collection restent affectes meme s?ils ne sont pas selectionnes.',
+        widget=forms.SelectMultiple(attrs={'size': 8}),
+    )
+
     class Meta:
         model = Category
-        fields = ('name', 'description', 'is_active')
+        fields = ('name', 'description', 'image', 'is_active')
         labels = {
             'name': 'Nom de la collection',
             'description': 'Description',
+            'image': 'Image de la collection',
             'is_active': 'Visible dans la boutique',
         }
         widgets = {'description': forms.Textarea(attrs={'rows': 3})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk:
+            self.fields['products'].initial = Product.objects.filter(category=self.instance)
+
+    def save(self, commit=True):
+        category = super().save(commit=commit)
+        if commit:
+            self.cleaned_data['products'].update(category=category)
+        return category
 
 
 class CouponForm(forms.ModelForm):

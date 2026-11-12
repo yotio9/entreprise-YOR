@@ -5,3 +5,14 @@ db.sqlite3
 media/
 .env
 staticfiles/
+
+# Private local data and runtime state
+.private_backups/
+private_exports/
+*.sqlite3
+*.sqlite3-journal
+*.log
+.env.*
+!.env.example
+playwright-report/
+test-results/

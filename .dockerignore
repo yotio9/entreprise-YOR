@@ -1,0 +1,14 @@
+# Credentials and local data
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.py[cod]
+*.sqlite3
+.private_backups/
+private_exports/
+media/
+staticfiles/
+.git/
+.pytest_cache/

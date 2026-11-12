@@ -243,3 +243,11 @@
     flex-wrap: wrap;
   }
 }
+
+.stock-note-limited {
+  display: inline-block;
+  margin-top: 8px;
+  color: #805712;
+  font-size: 13px;
+  font-weight: 600;
+}

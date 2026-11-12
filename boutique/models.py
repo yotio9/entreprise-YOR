@@ -25,6 +25,7 @@ class Category(models.Model):
 	name = models.CharField(max_length=80, unique=True)
 	slug = models.SlugField(max_length=100, unique=True, blank=True)
 	description = models.CharField(max_length=240, blank=True)
+	image = models.ImageField(upload_to='collections/', blank=True)
 	is_active = models.BooleanField(default=True)
 
 	class Meta:
@@ -41,9 +42,24 @@ class Category(models.Model):
 
 
 class Product(models.Model):
+	class ZodiacSign(models.TextChoices):
+		ARIES = 'aries', 'Bélier'
+		TAURUS = 'taurus', 'Taureau'
+		GEMINI = 'gemini', 'Gémeaux'
+		CANCER = 'cancer', 'Cancer'
+		LEO = 'leo', 'Lion'
+		VIRGO = 'virgo', 'Vierge'
+		LIBRA = 'libra', 'Balance'
+		SCORPIO = 'scorpio', 'Scorpion'
+		SAGITTARIUS = 'sagittarius', 'Sagittaire'
+		CAPRICORN = 'capricorn', 'Capricorne'
+		AQUARIUS = 'aquarius', 'Verseau'
+		PISCES = 'pisces', 'Poissons'
+
 	category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name='products')
 	name = models.CharField(max_length=160)
 	slug = models.SlugField(max_length=180, unique=True, blank=True)
+	zodiac_sign = models.CharField(max_length=12, choices=ZodiacSign.choices, blank=True)
 	description = models.TextField()
 	material = models.CharField(max_length=160, blank=True)
 	color = models.CharField(max_length=80, blank=True)
@@ -56,6 +72,7 @@ class Product(models.Model):
 	image = models.ImageField(upload_to='products/', blank=True)
 	image_url = models.URLField(blank=True)
 	source_url = models.URLField(max_length=2000, blank=True, verbose_name='Lien de provenance')
+	source_price_limit = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(Decimal('0.01'))], verbose_name='Prix fournisseur maximum (FCFA)')
 	is_featured = models.BooleanField(default=False)
 	is_active = models.BooleanField(default=True)
 	created_at = models.DateTimeField(auto_now_add=True)
@@ -153,6 +170,7 @@ class OrderItem(models.Model):
 	product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True, related_name='order_items')
 	product_name = models.CharField(max_length=160)
 	size = models.CharField(max_length=32, blank=True)
+	personalization = models.JSONField(default=dict, blank=True)
 	quantity = models.PositiveSmallIntegerField()
 	unit_price = models.DecimalField(max_digits=12, decimal_places=2)
 
@@ -266,3 +284,79 @@ class ReturnRequest(models.Model):
 
 	def __str__(self):
 		return f'Retour {self.order.reference} · {self.get_status_display()}'
+
+
+class JumiaOrderTask(models.Model):
+	class Status(models.TextChoices):
+		PENDING = 'pending', 'En attente'
+		RUNNING = 'running', 'En cours'
+		PREPARED = 'prepared', 'Preparee - revue humaine requise'
+		NEEDS_HUMAN = 'needs_human', 'Verification humaine requise'
+		FAILED = 'failed', 'Echec - reprise possible'
+
+	order_item = models.OneToOneField(OrderItem, on_delete=models.PROTECT, related_name='jumia_task')
+	source_url = models.URLField(max_length=2000)
+	expected_product_name = models.CharField(max_length=160)
+	expected_color = models.CharField(max_length=80, blank=True)
+	expected_size = models.CharField(max_length=32, blank=True)
+	quantity = models.PositiveSmallIntegerField()
+	price_limit = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+	status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+	simulation = models.BooleanField(default=True, editable=False)
+	attempt_count = models.PositiveSmallIntegerField(default=0)
+	max_attempts = models.PositiveSmallIntegerField(default=3)
+	available_at = models.DateTimeField(default=timezone.now)
+	claimed_at = models.DateTimeField(null=True, blank=True)
+	verified_title = models.CharField(max_length=300, blank=True)
+	verified_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+	verified_currency = models.CharField(max_length=8, blank=True)
+	availability = models.CharField(max_length=24, blank=True)
+	result_summary = models.TextField(blank=True)
+	last_error_code = models.CharField(max_length=48, blank=True)
+	result_data = models.JSONField(default=dict, blank=True)
+	created_at = models.DateTimeField(auto_now_add=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		ordering = ['created_at']
+		constraints = [
+			models.CheckConstraint(condition=models.Q(simulation=True), name='jumia_task_simulation_only'),
+		]
+		indexes = [
+			models.Index(fields=('status', 'available_at'), name='jumia_task_ready_idx'),
+			models.Index(fields=('status', 'claimed_at'), name='jumia_task_lease_idx'),
+		]
+
+	@property
+	def order(self):
+		return self.order_item.order
+
+	def __str__(self):
+		return f'Jumia | {self.order_item.order.reference} | {self.expected_product_name}'
+
+
+class JumiaOrderAttempt(models.Model):
+	class Status(models.TextChoices):
+		STARTED = 'started', 'Demarree'
+		PREPARED = 'prepared', 'Preparee'
+		NEEDS_HUMAN = 'needs_human', 'Revue humaine'
+		RETRYABLE_FAILURE = 'retryable_failure', 'Erreur temporaire'
+		PERMANENT_FAILURE = 'permanent_failure', 'Erreur definitive'
+		INTERRUPTED = 'interrupted', 'Interrompue'
+
+	task = models.ForeignKey(JumiaOrderTask, on_delete=models.CASCADE, related_name='attempts')
+	number = models.PositiveSmallIntegerField()
+	status = models.CharField(max_length=24, choices=Status.choices, default=Status.STARTED)
+	summary = models.TextField(blank=True)
+	result_data = models.JSONField(default=dict, blank=True)
+	started_at = models.DateTimeField(auto_now_add=True)
+	finished_at = models.DateTimeField(null=True, blank=True)
+
+	class Meta:
+		ordering = ['number']
+		constraints = [
+			models.UniqueConstraint(fields=('task', 'number'), name='unique_jumia_task_attempt_number'),
+		]
+
+	def __str__(self):
+		return f'{self.task_id} | tentative {self.number}'

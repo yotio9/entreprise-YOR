@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import time
 from urllib.parse import urlparse
 
@@ -37,6 +38,16 @@ from .wave import WaveCheckoutError, create_checkout_session, create_merchant_pa
 
 logger = logging.getLogger(__name__)
 
+HOROSCO_SLUGS = {'horosco', 'horoscope'}
+COLOR_HEX_PATTERN = re.compile(r'^#[0-9a-fA-F]{6}$')
+
+
+def _is_horosco_category(category):
+	return bool(category and (
+		category.slug.casefold() in HOROSCO_SLUGS
+		or category.name.casefold() in HOROSCO_SLUGS
+	))
+
 
 def home(request):
 	categories = Category.objects.filter(is_active=True)
@@ -51,6 +62,11 @@ def catalogue(request):
 	products = Product.objects.filter(is_active=True).select_related('category')
 	categories = Category.objects.filter(is_active=True)
 	category_slug = request.GET.get('categorie', '')
+	selected_zodiac_sign = request.GET.get('signe', '').strip().lower()
+	zodiac_signs = Product.ZodiacSign.choices
+	valid_zodiac_signs = {value for value, _ in zodiac_signs}
+	if selected_zodiac_sign not in valid_zodiac_signs:
+		selected_zodiac_sign = ''
 	selected_size = request.GET.get('taille', '').strip().upper()
 	search = request.GET.get('q', '').strip()
 	selected_color = request.GET.get('couleur', '').strip()
@@ -60,6 +76,8 @@ def catalogue(request):
 	in_stock = request.GET.get('disponible') == '1'
 	if category_slug:
 		products = products.filter(category__slug=category_slug)
+	if selected_zodiac_sign:
+		products = products.filter(zodiac_sign=selected_zodiac_sign)
 	if search:
 		products = products.filter(
 			Q(name__icontains=search)
@@ -100,6 +118,29 @@ def catalogue(request):
 	else:
 		selected_sort = 'featured'
 	colors = Product.objects.filter(is_active=True).exclude(color='').order_by('color').values_list('color', flat=True).distinct()
+	selected_category_object = next(
+		(category for category in categories if category.slug == category_slug),
+		None,
+	)
+	is_horosco = _is_horosco_category(selected_category_object)
+	horosco_groups = []
+	if is_horosco:
+		filtered_products = list(products)
+		for sign_value, sign_label in zodiac_signs:
+			sign_products = [product for product in filtered_products if product.zodiac_sign == sign_value]
+			if sign_products:
+				horosco_groups.append({
+					'sign': sign_value,
+					'label': sign_label,
+					'products': sign_products,
+				})
+		unassigned_products = [product for product in filtered_products if not product.zodiac_sign]
+		if unassigned_products:
+			horosco_groups.append({
+				'sign': '',
+				'label': 'À classer',
+				'products': unassigned_products,
+			})
 	favorite_ids = set()
 	if request.user.is_authenticated:
 		favorite_ids = set(Favorite.objects.filter(user=request.user).values_list('product_id', flat=True))
@@ -107,6 +148,10 @@ def catalogue(request):
 		'products': products,
 		'categories': categories,
 		'selected_category': category_slug,
+		'is_horosco': is_horosco,
+		'zodiac_signs': zodiac_signs,
+		'selected_zodiac_sign': selected_zodiac_sign,
+		'horosco_groups': horosco_groups,
 		'selected_size': selected_size,
 		'search': search,
 		'colors': colors,
@@ -121,6 +166,7 @@ def catalogue(request):
 
 def product_detail(request, slug):
 	product = get_object_or_404(Product, slug=slug, is_active=True)
+	is_horosco = _is_horosco_category(product.category)
 	verified_buyer = request.user.is_authenticated and OrderItem.objects.filter(
 		product=product,
 		order__user=request.user,
@@ -150,6 +196,8 @@ def product_detail(request, slug):
 		'recommendations': recommendations,
 		'favorited': favorited,
 		'favorite_ids': favorite_ids,
+		'is_horosco': is_horosco,
+		'zodiac_signs': Product.ZodiacSign.choices,
 	})
 
 
@@ -216,6 +264,7 @@ def _cart_lines(request):
 					'product': product,
 					'quantity': quantity,
 					'size': entry.get('size', ''),
+					'personalization': entry.get('personalization', {}),
 					'line_total': product.price * quantity,
 				})
 	subtotal = sum((line['line_total'] for line in lines), Decimal('0.00'))
@@ -286,12 +335,34 @@ def add_to_cart(request):
 		return JsonResponse({'error': 'La quantité demandée n’est pas disponible.'}, status=400)
 	if product.sizes and size not in product.sizes:
 		return JsonResponse({'error': 'Choisissez une taille disponible.'}, status=400)
+	personalization = {}
+	if _is_horosco_category(product.category):
+		personalized_sign = request.POST.get('personalized_sign', '').strip().lower()
+		color_primary = request.POST.get('color_primary', '').strip().lower()
+		color_secondary = request.POST.get('color_secondary', '').strip().lower()
+		if personalized_sign not in {value for value, _ in Product.ZodiacSign.choices}:
+			return JsonResponse({'error': 'Choisissez votre signe astrologique.'}, status=400)
+		if not COLOR_HEX_PATTERN.fullmatch(color_primary) or not COLOR_HEX_PATTERN.fullmatch(color_secondary):
+			return JsonResponse({'error': 'Choisissez deux couleurs valides pour votre personnalisation.'}, status=400)
+		personalization = {
+			'sign': personalized_sign,
+			'sign_label': dict(Product.ZodiacSign.choices)[personalized_sign],
+			'color_primary': color_primary,
+			'color_secondary': color_secondary,
+		}
 	key = f'{product.pk}:{size}'
+	if personalization:
+		key = f'{key}:{personalization["sign"]}:{personalization["color_primary"]}:{personalization["color_secondary"]}'
 	cart = request.session.get('cart', {})
 	current_quantity = cart.get(key, {}).get('quantity', 0)
 	if current_quantity + quantity > product.stock:
 		return JsonResponse({'error': 'Le stock ne permet pas cette quantité.'}, status=400)
-	cart[key] = {'product_id': product.pk, 'quantity': current_quantity + quantity, 'size': size}
+	cart[key] = {
+		'product_id': product.pk,
+		'quantity': current_quantity + quantity,
+		'size': size,
+		'personalization': personalization,
+	}
 	request.session['cart'] = cart
 	return JsonResponse(_cart_json(request))
 
@@ -411,6 +482,7 @@ def checkout(request):
 					product=product,
 					product_name=product.name,
 					size=line['size'],
+					personalization=line['personalization'],
 					quantity=line['quantity'],
 					unit_price=product.price,
 				)
@@ -465,6 +537,20 @@ def checkout(request):
 def order_history(request):
 	orders = Order.objects.filter(user=request.user).prefetch_related('items')
 	return render(request, 'boutique/order_history.html', {'orders': orders})
+
+
+@login_required
+def customer_dashboard(request):
+	orders = Order.objects.filter(user=request.user).prefetch_related('items')
+	favorites = Favorite.objects.filter(user=request.user, product__is_active=True).select_related('product', 'product__category')
+	favorite_ids = set(favorites.values_list('product_id', flat=True))
+	return render(request, 'boutique/customer_dashboard.html', {
+		'recent_orders': orders[:3],
+		'orders_count': orders.count(),
+		'favorites': favorites[:4],
+		'favorites_count': len(favorite_ids),
+		'favorite_ids': favorite_ids,
+	})
 
 
 @login_required
@@ -660,8 +746,19 @@ def admin_categories(request):
 	return render(request, 'boutique/admin_categories.html', {'categories': categories})
 
 
+@admin_required
+def admin_category_detail(request, category_id):
+	category = get_object_or_404(Category, pk=category_id)
+	products = category.products.order_by('name')
+	return render(request, 'boutique/admin_category_detail.html', {
+		'category': category,
+		'products': products,
+		'is_horosco': _is_horosco_category(category),
+	})
+
+
 def _category_form_view(request, category=None):
-	form = CategoryForm(request.POST or None, instance=category)
+	form = CategoryForm(request.POST or None, request.FILES or None, instance=category)
 	if request.method == 'POST' and form.is_valid():
 		category = form.save()
 		messages.success(request, f'La collection « {category.name} » a été enregistrée.')
@@ -795,20 +892,29 @@ def admin_return_edit(request, return_id):
 	return render(request, 'boutique/admin_return_form.html', {'form': form, 'return_request': return_request})
 
 
-def _product_form_view(request, product=None):
-	form = ProductForm(request.POST or None, request.FILES or None, instance=product)
+def _product_form_view(request, product=None, default_category=None):
+	initial = {'category': default_category} if default_category and not product else None
+	form = ProductForm(request.POST or None, request.FILES or None, instance=product, initial=initial)
 	if request.method == 'POST' and form.is_valid():
 		product = form.save()
 		for index, image_file in enumerate(request.FILES.getlist('gallery')):
 			ProductImage.objects.create(product=product, image=image_file, position=index)
 		messages.success(request, f'« {product.name} » a été enregistré.')
+		if default_category:
+			return redirect('admin_collection_detail', category_id=default_category.pk)
 		return redirect('admin_articles')
-	return render(request, 'boutique/admin_product_form.html', {'form': form, 'product': product})
+	return render(request, 'boutique/admin_product_form.html', {
+		'form': form,
+		'product': product,
+		'return_category': default_category,
+	})
 
 
 @admin_required
 def product_create(request):
-	return _product_form_view(request)
+	category_id = request.GET.get('category')
+	category = get_object_or_404(Category, pk=category_id) if category_id else None
+	return _product_form_view(request, default_category=category)
 
 
 @admin_required

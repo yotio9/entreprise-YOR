@@ -32,7 +32,7 @@
     </div>
     <aside class="cart-summary checkout-summary">
       <span class="eyebrow">VOTRE COMMANDE</span>
-      {% for line in lines %}<div class="checkout-item"><span>{{ line.quantity }} × {{ line.product.name }}{% if line.size %}<small> · {{ line.size }}</small>{% endif %}</span><strong>{{ line.line_total|floatformat:0 }}</strong></div>{% endfor %}
+      {% for line in lines %}<div class="checkout-item"><span>{{ line.quantity }} × {{ line.product.name }}{% if line.size %}<small> · {{ line.size }}</small>{% endif %}{% include 'boutique/_personalization_summary.html' with personalization=line.personalization %}</span><strong>{{ line.line_total|floatformat:0 }}</strong></div>{% endfor %}
       <div class="summary-row"><span>Sous-total</span><strong>{{ subtotal|floatformat:0 }} FCFA</strong></div>
       {% if coupon %}<div class="summary-row"><span>Remise · {{ coupon.code }}</span><strong>−{{ discount|floatformat:0 }} FCFA</strong></div>{% endif %}
       {% if loyalty_points_available %}<label class="loyalty-check"><input type="checkbox" name="use_loyalty_points" value="1" {% if use_loyalty_points %}checked{% endif %}> Utiliser mes {{ loyalty_points_available }} points (10 FCFA / point)</label>{% if loyalty_points_used %}<div class="summary-row"><span>Remise fidélité · {{ loyalty_points_used }} points</span><strong>−{{ loyalty_discount|floatformat:0 }} FCFA</strong></div>{% endif %}{% endif %}

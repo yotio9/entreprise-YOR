@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.db import transaction
 
-from .models import Category, Coupon, Order, OrderItem, Product, ProductImage, ReturnRequest, Review, User
+from .models import Category, Coupon, JumiaOrderAttempt, JumiaOrderTask, Order, OrderItem, Product, ProductImage, ReturnRequest, Review, User
 from .notifications import send_return_status_email
 
 
@@ -26,7 +26,7 @@ class ProductImageInline(admin.TabularInline):
 class OrderItemInline(admin.TabularInline):
 	model = OrderItem
 	extra = 0
-	readonly_fields = ('product_name', 'size', 'quantity', 'unit_price')
+	readonly_fields = ('product_name', 'size', 'personalization', 'quantity', 'unit_price')
 	can_delete = False
 
 
@@ -40,8 +40,8 @@ class YorwaniUserAdmin(UserAdmin):
 
 @admin.register(Product, site=owner_admin_site)
 class ProductAdmin(admin.ModelAdmin):
-	list_display = ('name', 'category', 'color', 'price', 'stock', 'source_url', 'is_active', 'is_featured')
-	list_filter = ('category', 'color', 'is_active', 'is_featured')
+	list_display = ('name', 'category', 'zodiac_sign', 'color', 'price', 'source_url', 'source_price_limit', 'stock', 'is_active', 'is_featured')
+	list_filter = ('category', 'zodiac_sign', 'color', 'is_active', 'is_featured')
 	search_fields = ('name', 'description')
 	inlines = (ProductImageInline,)
 	prepopulated_fields = {'slug': ('name',)}
@@ -100,3 +100,43 @@ class ReturnRequestAdmin(admin.ModelAdmin):
 				customer.save(update_fields=('loyalty_points',))
 		if change and previous_status != obj.status and not send_return_status_email(obj):
 			self.message_user(request, 'Le statut est enregistré, mais l’e-mail client n’a pas pu être envoyé.')
+
+
+class JumiaOrderAttemptInline(admin.TabularInline):
+	model = JumiaOrderAttempt
+	extra = 0
+	can_delete = False
+	readonly_fields = ('number', 'status', 'summary', 'result_data', 'started_at', 'finished_at')
+
+	def has_add_permission(self, request, obj=None):
+		return False
+
+
+@admin.register(JumiaOrderTask, site=owner_admin_site)
+class JumiaOrderTaskAdmin(admin.ModelAdmin):
+	list_display = ('id', 'order_reference', 'expected_product_name', 'status', 'verified_price', 'verified_currency', 'attempt_count', 'updated_at')
+	list_filter = ('status', 'availability', 'created_at')
+	search_fields = ('expected_product_name', 'order_item__order__reference')
+	readonly_fields = (
+		'order_item', 'source_url', 'expected_product_name', 'expected_color',
+		'expected_size', 'quantity', 'price_limit', 'status', 'simulation',
+		'attempt_count', 'max_attempts', 'available_at', 'claimed_at',
+		'verified_title', 'verified_price', 'verified_currency', 'availability',
+		'result_summary', 'last_error_code', 'result_data', 'created_at', 'updated_at',
+	)
+	fields = readonly_fields
+	inlines = (JumiaOrderAttemptInline,)
+
+	def order_reference(self, obj):
+		return obj.order_item.order.reference
+
+	order_reference.short_description = 'R?f?rence commande'
+
+	def has_add_permission(self, request):
+		return False
+
+	def has_change_permission(self, request, obj=None):
+		return False
+
+	def has_delete_permission(self, request, obj=None):
+		return False

@@ -4,13 +4,17 @@ import json
 import time
 from datetime import timedelta
 from decimal import Decimal
+from io import BytesIO
+from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core import mail
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from PIL import Image
 
 from .forms import ProductForm, RegistrationForm
 from .models import Category, Coupon, Favorite, Order, OrderItem, Product, ReturnRequest, Review
@@ -60,11 +64,217 @@ class StorefrontTests(TestCase):
                 if url == reverse('produit', args=[self.product.slug]):
                     self.assertContains(response, 'product-image-zoom')
 
+    def test_horosco_collection_groups_products_by_zodiac_sign(self):
+        horosco = Category.objects.create(name='Horosco')
+        Product.objects.create(
+            category=horosco,
+            name='Robe du Lion',
+            description='Une robe solaire.',
+            price='35000.00',
+            stock=2,
+            zodiac_sign=Product.ZodiacSign.LEO,
+        )
+        Product.objects.create(
+            category=horosco,
+            name='Robe du Bélier',
+            description='Une robe pleine de caractère.',
+            price='35000.00',
+            stock=2,
+            zodiac_sign=Product.ZodiacSign.ARIES,
+        )
+
+        response = self.client.get(reverse('catalogue'), {'categorie': horosco.slug})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'COLLECTION HOROSCO')
+        self.assertContains(response, 'name="signe"')
+        self.assertContains(response, 'Robe du Bélier')
+        self.assertContains(response, 'Robe du Lion')
+        self.assertLess(
+            response.content.index('<h2>Bélier</h2>'.encode()),
+            response.content.index(b'<h2>Lion</h2>'),
+        )
+        sign_response = self.client.get(
+            reverse('catalogue'),
+            {'categorie': horosco.slug, 'signe': Product.ZodiacSign.LEO},
+        )
+        self.assertContains(sign_response, 'Robe du Lion')
+        self.assertNotContains(sign_response, 'Robe du Bélier')
+
+    def test_horosco_product_requires_and_preserves_personalization(self):
+        horosco = Category.objects.create(name='Horosco')
+        self.product.category = horosco
+        self.product.zodiac_sign = Product.ZodiacSign.LEO
+        self.product.save()
+
+        detail = self.client.get(reverse('produit', args=[self.product.slug]))
+        self.assertContains(detail, 'Personnaliser votre pièce')
+        self.assertContains(detail, 'Inspiré du signe')
+
+        invalid_response = self.client.post(reverse('panier_ajouter'), {
+            'product_id': self.product.pk,
+            'size': 'M',
+            'quantity': '1',
+            'personalized_sign': 'unknown',
+            'color_primary': '#C9A45C',
+            'color_secondary': '#11110F',
+        })
+        self.assertEqual(invalid_response.status_code, 400)
+
+        add_response = self.client.post(reverse('panier_ajouter'), {
+            'product_id': self.product.pk,
+            'size': 'M',
+            'quantity': '1',
+            'personalized_sign': Product.ZodiacSign.PISCES,
+            'color_primary': '#C9A45C',
+            'color_secondary': '#11110F',
+        })
+        self.assertEqual(add_response.status_code, 200)
+        self.assertContains(self.client.get(reverse('panier')), 'Poissons')
+        self.assertContains(self.client.get(reverse('panier')), '#c9a45c')
+        self.assertContains(self.client.get(reverse('panier')), '#11110f')
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        ORDER_NOTIFICATION_EMAIL='owner@example.com',
+    )
+    def test_horosco_personalization_is_saved_on_order_and_in_emails(self):
+        horosco = Category.objects.create(name='Horosco')
+        self.product.category = horosco
+        self.product.zodiac_sign = Product.ZodiacSign.LEO
+        self.product.save()
+        self.client.force_login(self.customer)
+
+        response = self.client.post(reverse('panier_ajouter'), {
+            'product_id': self.product.pk,
+            'size': 'M',
+            'quantity': '1',
+            'personalized_sign': Product.ZodiacSign.PISCES,
+            'color_primary': '#C9A45C',
+            'color_secondary': '#11110F',
+        })
+        self.assertEqual(response.status_code, 200)
+
+        checkout_response = self.client.post(reverse('commande'), {
+            'phone': '0712345678',
+            'address': 'Rue des Jardins',
+            'city': 'Cocody, Abidjan',
+            'payment_method': Order.PaymentMethod.CASH_ON_DELIVERY,
+        })
+        order = Order.objects.get(user=self.customer)
+        item = order.items.get()
+        self.assertEqual(item.personalization, {
+            'sign': Product.ZodiacSign.PISCES,
+            'sign_label': 'Poissons',
+            'color_primary': '#c9a45c',
+            'color_secondary': '#11110f',
+        })
+        self.assertEqual(checkout_response.status_code, 302)
+        self.assertContains(self.client.get(reverse('commande_detail', args=[order.reference])), 'Poissons')
+        self.assertIn('couleurs : #c9a45c et #11110f', mail.outbox[0].body)
+        self.assertIn('couleurs : #c9a45c et #11110f', mail.outbox[1].body)
+
     def test_owner_dashboard_renders(self):
         self.client.force_login(self.admin)
         response = self.client.get(reverse('dashboard'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Vue d’ensemble')
+
+    def test_customer_dashboard_renders_product_card_for_favorite(self):
+        Favorite.objects.create(user=self.customer, product=self.product)
+        self.client.force_login(self.customer)
+
+        response = self.client.get(reverse('espace_client'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse('produit', args=[self.product.slug]))
+        self.assertContains(response, self.product.name)
+
+    def test_account_name_links_to_client_space(self):
+        self.client.force_login(self.customer)
+
+        response = self.client.get(reverse('accueil'))
+
+        self.assertContains(
+            response,
+            f'href="{reverse("espace_client")}">{self.customer.get_full_name()}</a>',
+        )
+
+    def test_account_name_links_to_admin_space(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse('accueil'))
+
+        self.assertContains(
+            response,
+            f'href="{reverse("dashboard")}">{self.admin.get_full_name() or self.admin.email}</a>',
+        )
+
+    def test_customer_dashboard_handles_favorite_with_empty_slug(self):
+        self.product.slug = ''
+        self.product.save(update_fields=['slug'])
+        Favorite.objects.create(user=self.customer, product=self.product)
+        self.client.force_login(self.customer)
+
+        response = self.client.get(reverse('espace_client'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.product.name)
+
+    def test_collection_image_and_products_can_be_added_and_shown_on_home(self):
+        with TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            image_buffer = BytesIO()
+            Image.new('RGB', (2, 2), color='purple').save(image_buffer, format='PNG')
+            upload = SimpleUploadedFile(
+                'collection.png', image_buffer.getvalue(), content_type='image/png'
+            )
+            self.client.force_login(self.admin)
+
+            response = self.client.post(reverse('admin_collection_nouvelle'), {
+                'name': 'Astrologie',
+                'description': 'Collection des signes',
+                'is_active': 'on',
+                'products': [str(self.product.pk)],
+                'image': upload,
+            })
+
+            self.assertRedirects(response, reverse('admin_collections'))
+            category = Category.objects.get(name='Astrologie')
+            self.product.refresh_from_db()
+            self.assertTrue(category.image.name.startswith('collections/'))
+            self.assertEqual(self.product.category_id, category.pk)
+
+            home_response = self.client.get(reverse('accueil'))
+            self.assertContains(home_response, 'Astrologie')
+            self.assertContains(home_response, category.image.url)
+
+    def test_collection_page_adds_new_product_to_that_collection(self):
+        self.client.force_login(self.admin)
+        collection_url = reverse('admin_collection_detail', args=[self.category.pk])
+        list_response = self.client.get(reverse('admin_collections'))
+        self.assertContains(list_response, collection_url)
+        collection_response = self.client.get(collection_url)
+        self.assertContains(collection_response, self.product.name)
+        add_article_url = f'{reverse("admin_article_nouveau")}?category={self.category.pk}'
+        self.assertContains(collection_response, add_article_url)
+
+        form_response = self.client.get(add_article_url)
+        self.assertEqual(form_response.status_code, 200)
+        self.assertContains(form_response, f'<option value="{self.category.pk}" selected')
+
+        response = self.client.post(add_article_url, {
+            'category': str(self.category.pk),
+            'name': 'T-shirt signe du Lion',
+            'description': 'Un nouvel article de la collection.',
+            'price': '18000.00',
+            'stock': '5',
+            'sizes': 'S, M',
+            'is_active': 'on',
+        })
+
+        self.assertRedirects(response, collection_url)
+        product = Product.objects.get(name='T-shirt signe du Lion')
+        self.assertEqual(product.category_id, self.category.pk)
 
     def test_admin_accounting_totals_received_and_outstanding_money(self):
         base_order = {

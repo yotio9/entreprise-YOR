@@ -1,12 +1,12 @@
 <article class="product-card">
-  <a class="product-image" href="{% url 'produit' product.slug %}">
+  {% if product.slug %}<a class="product-image" href="{% url 'produit' product.slug %}">{% else %}<div class="product-image">{% endif %}
     {% if product.image %}<img src="{{ product.image.url }}" alt="{{ product.name }}" loading="lazy">
     {% elif product.image_url %}<img src="{{ product.image_url }}" alt="{{ product.name }}" loading="lazy">
     {% else %}<div class="image-placeholder"><span>Y</span></div>{% endif %}
     {% if product.is_featured %}<span class="image-tag">SÉLECTION</span>{% endif %}
-  </a>
+  {% if product.slug %}</a>{% else %}</div>{% endif %}
   {% if user.is_authenticated %}<form method="post" action="{% url 'favori_basculer' product.id %}" class="favorite-form">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button type="submit" class="favorite-button" aria-label="{% if product.id in favorite_ids %}Retirer des favoris{% else %}Ajouter aux favoris{% endif %}" title="{% if product.id in favorite_ids %}Retirer des favoris{% else %}Ajouter aux favoris{% endif %}">{% if product.id in favorite_ids %}♥{% else %}♡{% endif %}</button></form>{% endif %}
-  <div class="product-meta"><div><span class="product-category">{{ product.category.name }}</span><h3><a href="{% url 'produit' product.slug %}">{{ product.name }}</a></h3></div><span class="product-price">{{ product.price|floatformat:0 }} <small>FCFA</small></span></div>
+  <div class="product-meta"><div><span class="product-category">{{ product.category.name }}{% if product.zodiac_sign %} · {{ product.get_zodiac_sign_display }}{% endif %}</span><h3>{% if product.slug %}<a href="{% url 'produit' product.slug %}">{{ product.name }}</a>{% else %}{{ product.name }}{% endif %}</h3></div><span class="product-price">{{ product.price|floatformat:0 }} <small>FCFA</small></span></div>
   {% if product.review_average %}<span class="product-rating">★ {{ product.review_average|floatformat:1 }}</span>{% endif %}
-  {% if product.stock == 0 %}<span class="stock-note">Épuisé</span>{% endif %}
+  {% if product.stock == 0 %}<span class="stock-note">Épuisé</span>{% elif product.stock < 5 %}<span class="stock-note stock-note-limited">Plus que {{ product.stock }} en stock</span>{% endif %}
 </article>

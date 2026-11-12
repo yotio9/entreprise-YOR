@@ -10,7 +10,7 @@
     <a class="continue-shopping" href="{% url 'historique_commandes' %}">Voir mes commandes</a>
   </div>
   <aside class="cart-summary order-summary"><span class="eyebrow">RÉCAPITULATIF</span>
-    {% for item in order.items.all %}<div class="checkout-item"><span>{{ item.quantity }} × {{ item.product_name }}{% if item.size %}<small> · {{ item.size }}</small>{% endif %}</span><strong>{{ item.line_total|floatformat:0 }}</strong></div>{% endfor %}
+    {% for item in order.items.all %}<div class="checkout-item"><span>{{ item.quantity }} × {{ item.product_name }}{% if item.size %}<small> · {{ item.size }}</small>{% endif %}{% include 'boutique/_personalization_summary.html' with personalization=item.personalization %}</span><strong>{{ item.line_total|floatformat:0 }}</strong></div>{% endfor %}
     <div class="summary-row"><span>Total à régler</span><strong>{{ order.total|floatformat:0 }} FCFA</strong></div>
     <div class="delivery-summary"><span class="eyebrow">ADRESSE DE LIVRAISON</span><p>{{ order.customer_name }}<br>{{ order.phone }}<br>{{ order.address }}<br>{{ order.city }}</p>{% if order.delivery_note %}<p>{{ order.delivery_note }}</p>{% endif %}</div>
   </aside>

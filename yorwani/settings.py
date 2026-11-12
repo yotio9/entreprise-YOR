@@ -13,6 +13,9 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
+import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
+
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -29,7 +32,14 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'yorwani-dev-only-change-before
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', '1') == '1'
 
-ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = [
+    host.strip() for host in os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+    if host.strip()
+]
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip() for origin in os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',')
+    if origin.strip()
+]
 
 
 # Application definition
@@ -46,6 +56,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -78,11 +89,18 @@ WSGI_APPLICATION = 'yorwani.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
+if not DATABASE_URL:
+    raise ImproperlyConfigured('DATABASE_URL is required; SQLite is disabled for this project.')
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.parse(
+        DATABASE_URL,
+        conn_max_age=int(os.environ.get('DB_CONN_MAX_AGE', '60')),
+        conn_health_checks=True,
+        disable_server_side_cursors=True,
+        ssl_require=os.environ.get('DB_SSL_REQUIRE', '1') == '1',
+    )
 }
 
 
@@ -122,6 +140,11 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
+}
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
@@ -152,11 +175,30 @@ EMAIL_TIMEOUT = int(os.environ.get('EMAIL_TIMEOUT', '10'))
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL') or EMAIL_HOST_USER or 'Yorwani <boutique@yorwani.com>'
 ORDER_NOTIFICATION_EMAIL = os.environ.get('ORDER_NOTIFICATION_EMAIL', 'yorwani397@gmail.com')
 
+JUMIA_AGENT_ENABLED = os.environ.get('JUMIA_AGENT_ENABLED', '0') == '1'
+JUMIA_AGENT_MODE = os.environ.get('JUMIA_AGENT_MODE', 'simulation').strip().lower()
+JUMIA_AGENT_POLL_SECONDS = max(5, int(os.environ.get('JUMIA_AGENT_POLL_SECONDS', '20')))
+JUMIA_AGENT_MAX_ATTEMPTS = max(1, int(os.environ.get('JUMIA_AGENT_MAX_ATTEMPTS', '3')))
+JUMIA_AGENT_TIMEOUT_SECONDS = max(5, int(os.environ.get('JUMIA_AGENT_TIMEOUT_SECONDS', '30')))
+JUMIA_BROWSER_HEADLESS = os.environ.get('JUMIA_BROWSER_HEADLESS', '1') == '1'
+JUMIA_EXPECTED_CURRENCY = os.environ.get('JUMIA_EXPECTED_CURRENCY', 'XOF').strip().upper()
+
+LLM_API_BASE_URL = os.environ.get('LLM_API_BASE_URL', '').rstrip('/')
+LLM_API_KEY = os.environ.get('LLM_API_KEY', '')
+LLAMA_MODEL = os.environ.get('LLAMA_MODEL', '')
+LLM_TIMEOUT_SECONDS = max(3, int(os.environ.get('LLM_TIMEOUT_SECONDS', '20')))
+
+if not DEBUG and SECRET_KEY == 'yorwani-dev-only-change-before-deploying':
+    raise ImproperlyConfigured('DJANGO_SECRET_KEY must be set when DEBUG=0.')
+if JUMIA_AGENT_MODE != 'simulation':
+    raise ImproperlyConfigured('JUMIA_AGENT_MODE must remain simulation; checkout automation is disabled.')
+
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = False
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
 if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True

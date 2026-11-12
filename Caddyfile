@@ -1,0 +1,12 @@
+{$SITE_DOMAIN} {
+    encode zstd gzip
+
+    handle_path /media/* {
+        root * /srv/media
+        file_server
+    }
+
+    handle {
+        reverse_proxy web:8000
+    }
+}

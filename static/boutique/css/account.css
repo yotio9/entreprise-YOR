@@ -45,3 +45,41 @@
     font-size: 21px !important;
   }
 }
+.customer-dashboard {
+  display: grid;
+  gap: 54px;
+}
+.account-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.account-summary-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 150px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+.account-summary-card strong {
+  font-family: 'Cormorant Garamond', var(--serif), serif;
+  font-size: 38px;
+  font-weight: 500;
+}
+.account-summary-card strong small { font-family: var(--sans); font-size: 14px; }
+.account-summary-card > span:last-child { color: var(--muted); font-size: 14px; }
+.account-summary-card[href]:hover { border-color: #c9a45c; }
+.loyalty-card { background: #f7f3ea; }
+.account-dashboard-section { min-width: 0; }
+.customer-dashboard > form .signout-button {
+  min-height: 44px; padding: 0 20px; border: 1px solid #c9a45c;
+  background: #c9a45c; color: #171612; font-size: 14px; font-weight: 700;
+  letter-spacing: 1px; text-transform: uppercase;
+}
+@media (max-width: 700px) {
+  .account-summary-grid { grid-template-columns: 1fr; }
+  .account-summary-card { min-height: 120px; }
+  .customer-dashboard { gap: 38px; }
+}
