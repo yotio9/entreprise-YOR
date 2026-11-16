@@ -150,6 +150,38 @@ STORAGES = {
     'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
     'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
 }
+
+# Keep local uploads on disk during development. On Render, configure the
+# Supabase S3 credentials to persist uploaded product/category images.
+SUPABASE_STORAGE_BUCKET = os.environ.get('SUPABASE_STORAGE_BUCKET', '').strip()
+if SUPABASE_STORAGE_BUCKET:
+    SUPABASE_PROJECT_REF = os.environ.get('NEXT_PUBLIC_SUPABASE_URL', '').removeprefix('https://').split('.')[0]
+    SUPABASE_STORAGE_REGION = os.environ.get('SUPABASE_STORAGE_REGION', '').strip()
+    if not SUPABASE_PROJECT_REF or not SUPABASE_STORAGE_REGION:
+        raise ImproperlyConfigured(
+            'Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_STORAGE_REGION when using Supabase Storage.'
+        )
+
+    STORAGES['default'] = {
+        'BACKEND': 'storages.backends.s3.S3Storage',
+        'OPTIONS': {
+            'bucket_name': SUPABASE_STORAGE_BUCKET,
+            'endpoint_url': f'https://{SUPABASE_PROJECT_REF}.storage.supabase.co/storage/v1/s3',
+            'region_name': SUPABASE_STORAGE_REGION,
+            'access_key': os.environ.get('SUPABASE_S3_ACCESS_KEY_ID', ''),
+            'secret_key': os.environ.get('SUPABASE_S3_SECRET_ACCESS_KEY', ''),
+            'addressing_style': 'path',
+            'signature_version': 's3v4',
+            'querystring_auth': False,
+            'default_acl': None,
+            'file_overwrite': False,
+            'custom_domain': (
+                f'{SUPABASE_PROJECT_REF}.supabase.co/storage/v1/object/public/'
+                f'{SUPABASE_STORAGE_BUCKET}'
+            ),
+            'url_protocol': 'https:',
+        },
+    }
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
