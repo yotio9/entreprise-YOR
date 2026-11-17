@@ -11,16 +11,68 @@ from unittest.mock import MagicMock, patch
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core import mail
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from PIL import Image
 
 from .forms import ProductForm, RegistrationForm
+from .image_sources import image_source_urls
 from .models import Category, Coupon, Favorite, Order, OrderItem, Product, ReturnRequest, Review
 from .wave import create_checkout_session, create_merchant_payment_link
 
 User = get_user_model()
+
+
+class ImageSourceTests(SimpleTestCase):
+    @override_settings(
+        SUPABASE_STORAGE_PUBLIC_BASE_URL=(
+            'https://example.supabase.co/storage/v1/object/public/Yorwani-media'
+        )
+    )
+    def test_storage_path_has_legacy_root_fallback_before_external_url(self):
+        class StoredImage:
+            name = 'products/shooting_tshirt_aquarius.png'
+            url = (
+                'https://example.supabase.co/storage/v1/object/public/'
+                'Yorwani-media/products/shooting_tshirt_aquarius.png'
+            )
+
+        sources = image_source_urls(
+            StoredImage(), 'https://images.example.test/fallback.png'
+        )
+
+        self.assertEqual(sources, [
+            'https://example.supabase.co/storage/v1/object/public/'
+            'Yorwani-media/products/shooting_tshirt_aquarius.png',
+            'https://example.supabase.co/storage/v1/object/public/'
+            'Yorwani-media/shooting_tshirt_aquarius.png',
+            'https://images.example.test/fallback.png',
+        ])
+
+    @override_settings(
+        SUPABASE_STORAGE_PUBLIC_BASE_URL=(
+            'https://example.supabase.co/storage/v1/object/public/Yorwani-media'
+        )
+    )
+    def test_missing_storage_object_keeps_root_and_external_fallbacks(self):
+        class MissingImage:
+            name = 'products/missing shirt.png'
+
+            @property
+            def url(self):
+                raise ValueError('The local file is missing.')
+
+        sources = image_source_urls(MissingImage(), 'https://images.example.test/valid.png')
+
+        self.assertEqual(sources, [
+            'https://example.supabase.co/storage/v1/object/public/'
+            'Yorwani-media/missing%20shirt.png',
+            'https://images.example.test/valid.png',
+        ])
+
+    def test_non_http_external_urls_are_ignored(self):
+        self.assertEqual(image_source_urls(None, 'javascript:alert(1)'), [])
 
 
 class StorefrontTests(TestCase):
@@ -63,6 +115,58 @@ class StorefrontTests(TestCase):
                 self.assertContains(response, 'boutique/img/logo-entier-transparent.png')
                 if url == reverse('produit', args=[self.product.slug]):
                     self.assertContains(response, 'product-image-zoom')
+
+    @override_settings(
+        STORAGES={
+            'default': {'BACKEND': 'django.core.files.storage.InMemoryStorage'},
+            'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
+        },
+        SUPABASE_STORAGE_PUBLIC_BASE_URL=(
+            'https://example.supabase.co/storage/v1/object/public/Yorwani-media'
+        ),
+    )
+    def test_admin_upload_saves_product_and_gallery_images_and_renders_fallback_urls(self):
+        image_buffer = BytesIO()
+        Image.new('RGB', (2, 2), color='purple').save(image_buffer, format='PNG')
+        image_bytes = image_buffer.getvalue()
+        main_image = SimpleUploadedFile('new-shirt.png', image_bytes, content_type='image/png')
+        gallery_image = SimpleUploadedFile('new-shirt-detail.png', image_bytes, content_type='image/png')
+        self.client.force_login(self.admin)
+
+        response = self.client.post(reverse('admin_article_nouveau'), {
+            'category': str(self.category.pk),
+            'name': 'T-shirt de test avec image',
+            'description': 'Image de vérification du formulaire.',
+            'price': '18000.00',
+            'stock': '3',
+            'sizes': 'S, M',
+            'is_active': 'on',
+            'image': main_image,
+            'gallery': [gallery_image],
+        })
+
+        self.assertRedirects(response, reverse('admin_articles'))
+        product = Product.objects.get(name='T-shirt de test avec image')
+        gallery = product.images.get()
+        self.assertEqual(product.image.name, 'products/new-shirt.png')
+        self.assertEqual(gallery.image.name, 'products/gallery/new-shirt-detail.png')
+        self.assertTrue(product.image.storage.exists(product.image.name))
+        self.assertTrue(gallery.image.storage.exists(gallery.image.name))
+
+        edit_response = self.client.get(reverse('admin_article_modifier', args=[product.pk]))
+        self.assertContains(edit_response, 'products/new-shirt.png')
+        self.assertContains(edit_response, 'data-image-fallbacks=')
+        storefront_response = self.client.get(reverse('produit', args=[product.slug]))
+        self.assertContains(storefront_response, 'data-image-fallbacks=')
+        self.assertContains(
+            storefront_response,
+            'https://example.supabase.co/storage/v1/object/public/Yorwani-media/new-shirt.png',
+        )
+        self.assertContains(
+            storefront_response,
+            'https://example.supabase.co/storage/v1/object/public/'
+            'Yorwani-media/new-shirt-detail.png',
+        )
 
     def test_horosco_collection_groups_products_by_zodiac_sign(self):
         horosco = Category.objects.create(name='Horosco')
@@ -221,6 +325,11 @@ class StorefrontTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, self.product.name)
 
+    @override_settings(
+        SUPABASE_STORAGE_PUBLIC_BASE_URL=(
+            'https://example.supabase.co/storage/v1/object/public/Yorwani-media'
+        )
+    )
     def test_collection_image_and_products_can_be_added_and_shown_on_home(self):
         with TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
             image_buffer = BytesIO()
@@ -247,6 +356,11 @@ class StorefrontTests(TestCase):
             home_response = self.client.get(reverse('accueil'))
             self.assertContains(home_response, 'Astrologie')
             self.assertContains(home_response, category.image.url)
+            self.assertContains(
+                home_response,
+                'https://example.supabase.co/storage/v1/object/public/'
+                'Yorwani-media/collection.png',
+            )
 
     def test_collection_page_adds_new_product_to_that_collection(self):
         self.client.force_login(self.admin)

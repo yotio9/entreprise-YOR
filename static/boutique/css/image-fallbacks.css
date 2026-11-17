@@ -1,0 +1,38 @@
+img[hidden] {
+  display: none !important;
+}
+
+.image-load-placeholder {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  overflow: hidden;
+  background: linear-gradient(145deg, #dedbd2, #c9c5bb);
+  color: rgba(25, 25, 21, 0.3);
+  font-family: Georgia, serif;
+  font-size: 30px;
+}
+
+.product-image > .image-load-placeholder {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  font-size: 68px;
+}
+
+.detail-main-image.image-unavailable::after {
+  content: 'Y';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, #dedbd2, #c9c5bb);
+  color: rgba(25, 25, 21, 0.3);
+  font-family: Georgia, serif;
+  font-size: 68px;
+}
+
+.category-thumb.image-load-placeholder {
+  object-fit: contain;
+}

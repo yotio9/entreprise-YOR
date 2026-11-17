@@ -1,4 +1,40 @@
 (() => {
+  document.addEventListener('error', (event) => {
+    const image = event.target;
+    if (!(image instanceof HTMLImageElement) || !image.hasAttribute('data-image-fallbacks')) return;
+
+    let fallbacks = [];
+    try {
+      fallbacks = JSON.parse(image.dataset.imageFallbacks || '[]');
+    } catch (_) {
+      fallbacks = [];
+    }
+
+    while (fallbacks.length) {
+      const next = fallbacks.shift();
+      image.dataset.imageFallbacks = JSON.stringify(fallbacks);
+      if (next && next !== image.src) {
+        image.src = next;
+        return;
+      }
+    }
+
+    if (image.id === 'main-product-image') {
+      image.hidden = true;
+      image.closest('.detail-main-image')?.classList.add('image-unavailable');
+      return;
+    }
+
+    const placeholder = document.createElement('span');
+    placeholder.className = `image-load-placeholder ${image.className || ''}`.trim();
+    placeholder.textContent = 'Y';
+    placeholder.setAttribute('role', 'img');
+    placeholder.setAttribute('aria-label', image.alt || 'Image indisponible');
+    if (image.hasAttribute('width')) placeholder.style.width = `${image.getAttribute('width')}px`;
+    if (image.hasAttribute('height')) placeholder.style.height = `${image.getAttribute('height')}px`;
+    image.replaceWith(placeholder);
+  }, true);
+
   const getCookie = (name) => document.cookie.split('; ').find((row) => row.startsWith(`${name}=`))?.split('=')[1];
   const send = async (url, data) => {
     const response = await fetch(url, {

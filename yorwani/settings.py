@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
@@ -153,32 +154,61 @@ STORAGES = {
 
 # Keep local uploads on disk during development. On Render, configure the
 # Supabase S3 credentials to persist uploaded product/category images.
+SUPABASE_URL = os.environ.get('NEXT_PUBLIC_SUPABASE_URL', '').strip().rstrip('/')
 SUPABASE_STORAGE_BUCKET = os.environ.get('SUPABASE_STORAGE_BUCKET', '').strip()
-if SUPABASE_STORAGE_BUCKET:
-    SUPABASE_PROJECT_REF = os.environ.get('NEXT_PUBLIC_SUPABASE_URL', '').removeprefix('https://').split('.')[0]
-    SUPABASE_STORAGE_REGION = os.environ.get('SUPABASE_STORAGE_REGION', '').strip()
-    if not SUPABASE_PROJECT_REF or not SUPABASE_STORAGE_REGION:
-        raise ImproperlyConfigured(
-            'Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_STORAGE_REGION when using Supabase Storage.'
-        )
+SUPABASE_STORAGE_REGION = os.environ.get('SUPABASE_STORAGE_REGION', '').strip()
+SUPABASE_S3_ACCESS_KEY_ID = os.environ.get('SUPABASE_S3_ACCESS_KEY_ID', '').strip()
+SUPABASE_S3_SECRET_ACCESS_KEY = os.environ.get('SUPABASE_S3_SECRET_ACCESS_KEY', '').strip()
 
+_supabase_host = urlsplit(SUPABASE_URL).hostname if SUPABASE_URL else None
+SUPABASE_PROJECT_REF = (
+    _supabase_host.removesuffix('.supabase.co')
+    if _supabase_host and _supabase_host.endswith('.supabase.co')
+    else ''
+)
+SUPABASE_STORAGE_PUBLIC_BASE_URL = ''
+
+_supabase_storage_values = {
+    'NEXT_PUBLIC_SUPABASE_URL': SUPABASE_URL,
+    'SUPABASE_STORAGE_BUCKET': SUPABASE_STORAGE_BUCKET,
+    'SUPABASE_STORAGE_REGION': SUPABASE_STORAGE_REGION,
+    'SUPABASE_S3_ACCESS_KEY_ID': SUPABASE_S3_ACCESS_KEY_ID,
+    'SUPABASE_S3_SECRET_ACCESS_KEY': SUPABASE_S3_SECRET_ACCESS_KEY,
+}
+_supabase_storage_enabled = any((
+    SUPABASE_STORAGE_BUCKET,
+    SUPABASE_STORAGE_REGION,
+    SUPABASE_S3_ACCESS_KEY_ID,
+    SUPABASE_S3_SECRET_ACCESS_KEY,
+))
+if not DEBUG or _supabase_storage_enabled:
+    _missing_supabase_storage = [name for name, value in _supabase_storage_values.items() if not value]
+    if _missing_supabase_storage:
+        raise ImproperlyConfigured(
+            'Supabase Storage is required in production. Missing environment variables: '
+            + ', '.join(_missing_supabase_storage)
+        )
+    if not SUPABASE_PROJECT_REF:
+        raise ImproperlyConfigured('NEXT_PUBLIC_SUPABASE_URL must be a Supabase project URL.')
+
+    SUPABASE_STORAGE_PUBLIC_BASE_URL = (
+        f'https://{SUPABASE_PROJECT_REF}.supabase.co/storage/v1/object/public/'
+        f'{SUPABASE_STORAGE_BUCKET}'
+    )
     STORAGES['default'] = {
         'BACKEND': 'storages.backends.s3.S3Storage',
         'OPTIONS': {
             'bucket_name': SUPABASE_STORAGE_BUCKET,
             'endpoint_url': f'https://{SUPABASE_PROJECT_REF}.storage.supabase.co/storage/v1/s3',
             'region_name': SUPABASE_STORAGE_REGION,
-            'access_key': os.environ.get('SUPABASE_S3_ACCESS_KEY_ID', ''),
-            'secret_key': os.environ.get('SUPABASE_S3_SECRET_ACCESS_KEY', ''),
+            'access_key': SUPABASE_S3_ACCESS_KEY_ID,
+            'secret_key': SUPABASE_S3_SECRET_ACCESS_KEY,
             'addressing_style': 'path',
             'signature_version': 's3v4',
             'querystring_auth': False,
             'default_acl': None,
             'file_overwrite': False,
-            'custom_domain': (
-                f'{SUPABASE_PROJECT_REF}.supabase.co/storage/v1/object/public/'
-                f'{SUPABASE_STORAGE_BUCKET}'
-            ),
+            'custom_domain': SUPABASE_STORAGE_PUBLIC_BASE_URL.removeprefix('https://'),
             'url_protocol': 'https:',
         },
     }

@@ -16,3 +16,13 @@ services:
         value: "1"
       - key: DATABASE_URL
         sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        value: https://vjjhtuuckjsxfnxnqird.supabase.co
+      - key: SUPABASE_STORAGE_BUCKET
+        value: Yorwani-media
+      - key: SUPABASE_STORAGE_REGION
+        value: eu-west-3
+      - key: SUPABASE_S3_ACCESS_KEY_ID
+        sync: false
+      - key: SUPABASE_S3_SECRET_ACCESS_KEY
+        sync: false

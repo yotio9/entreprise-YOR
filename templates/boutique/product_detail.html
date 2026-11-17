@@ -1,11 +1,13 @@
 {% extends 'boutique/base.html' %}
+{% load image_tags %}
 {% block title %}{{ product.name }} — Yorwani{% endblock %}
 {% block content %}
 <div class="breadcrumbs"><a href="{% url 'accueil' %}">Accueil</a><span>/</span><a href="{% url 'catalogue' %}">La collection</a><span>/</span><span>{{ product.name }}</span></div>
 <section class="product-detail">
   <div class="detail-gallery">
-    <div class="detail-main-image">{% if product.image %}<img id="main-product-image" src="{{ product.image.url }}" alt="{{ product.name }}" title="Agrandir la photo">{% elif product.image_url %}<img id="main-product-image" src="{{ product.image_url }}" alt="{{ product.name }}" title="Agrandir la photo">{% else %}<div class="image-placeholder"><span>Y</span></div>{% endif %}</div>
-    {% if gallery %}<div class="gallery-thumbs">{% for item in gallery %}{% if item.image %}<button type="button" class="gallery-thumb" data-image="{{ item.image.url }}"><img src="{{ item.image.url }}" alt="{{ item.alt_text|default:product.name }}"></button>{% elif item.image_url %}<button type="button" class="gallery-thumb" data-image="{{ item.image_url }}"><img src="{{ item.image_url }}" alt="{{ item.alt_text|default:product.name }}"></button>{% endif %}{% endfor %}</div>{% endif %}
+    {% image_sources product.image product.image_url as main_image %}
+    <div class="detail-main-image">{% if main_image.available %}<img id="main-product-image" src="{{ main_image.src }}" data-image-fallbacks="{{ main_image.fallbacks }}" alt="{{ product.name }}" title="Agrandir la photo">{% else %}<div class="image-placeholder"><span>Y</span></div>{% endif %}</div>
+    {% if gallery %}<div class="gallery-thumbs">{% for item in gallery %}{% image_sources item.image item.image_url as gallery_image %}{% if gallery_image.available %}<button type="button" class="gallery-thumb" data-image="{{ gallery_image.src }}" data-image-fallbacks="{{ gallery_image.fallbacks }}"><img src="{{ gallery_image.src }}" data-image-fallbacks="{{ gallery_image.fallbacks }}" alt="{{ item.alt_text|default:product.name }}"></button>{% endif %}{% endfor %}</div>{% endif %}
   </div>
   <div class="detail-info"><span class="eyebrow">{{ product.category.name|upper }}</span><h1>{{ product.name }}</h1>{% if product.zodiac_sign %}<p class="horosco-product-sign">Inspiré du signe <strong>{{ product.get_zodiac_sign_display }}</strong></p>{% endif %}<div class="detail-price">{{ product.price|floatformat:0 }} <span>FCFA</span>{% if product.compare_at_price %}<del>{{ product.compare_at_price|floatformat:0 }} FCFA</del>{% endif %}</div>{% if review_count %}<a class="product-rating" href="#product-reviews">★ {{ review_average|floatformat:1 }} · {{ review_count }} avis</a>{% endif %}<p class="detail-description">{{ product.description }}</p>{% if product.color %}<p class="product-color">Couleur : {{ product.color }}</p>{% endif %}{% if product.stock > 0 and product.stock < 5 %}<p class="stock-note stock-note-limited">Plus que {{ product.stock }}{% if product.stock == 1 %} exemplaire{% else %} exemplaires{% endif %} disponible{% if product.stock != 1 %}s{% endif %}.</p>{% endif %}
     {% if user.is_authenticated %}<form method="post" action="{% url 'favori_basculer' product.id %}" class="product-favorite-form">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="button button-outline" type="submit">{% if favorited %}♥ Retirer des favoris{% else %}♡ Ajouter aux favoris{% endif %}</button></form>{% endif %}
@@ -31,6 +33,7 @@
   const zoomImage = document.getElementById('zoom-product-image');
   mainImage.addEventListener('click', () => {
     zoomImage.src = mainImage.src;
+    zoomImage.dataset.imageFallbacks = mainImage.dataset.imageFallbacks || '[]';
     dialog.showModal();
   });
   document.querySelector('.image-zoom-close').addEventListener('click', () => dialog.close());
@@ -40,6 +43,9 @@
   document.querySelectorAll('.gallery-thumb').forEach((button) => {
     button.addEventListener('click', () => {
       mainImage.src = button.dataset.image;
+      mainImage.dataset.imageFallbacks = button.dataset.imageFallbacks || '[]';
+      mainImage.hidden = false;
+      mainImage.closest('.detail-main-image').classList.remove('image-unavailable');
     });
   });
 })();

@@ -1,4 +1,5 @@
 {% extends 'boutique/admin_base.html' %}
+{% load image_tags %}
 {% block title %}{{ category.name }} — Collections{% endblock %}
 {% block admin_content %}
 <div class="admin-heading">
@@ -13,14 +14,14 @@
     <a class="text-link" href="{% url 'admin_collections' %}">Retour aux collections</a>
   </div>
 </div>
-{% if category.image %}<div class="existing-gallery"><span class="eyebrow">IMAGE DE LA COLLECTION</span><div><figure><img src="{{ category.image.url }}" alt="{{ category.name }}"></figure></div></div>{% endif %}
+{% image_sources category.image as category_image %}{% if category_image.available %}<div class="existing-gallery"><span class="eyebrow">IMAGE DE LA COLLECTION</span><div><figure><img src="{{ category_image.src }}" data-image-fallbacks="{{ category_image.fallbacks }}" alt="{{ category.name }}"></figure></div></div>{% endif %}
 <div class="admin-table-wrap">
   <table class="admin-table">
     <thead><tr><th>Article</th>{% if is_horosco %}<th>Signe astrologique</th>{% endif %}<th>Prix</th><th>Stock</th><th>Visibilite</th><th>Actions</th></tr></thead>
     <tbody>
       {% for product in products %}
       <tr>
-        <td>{% if product.image %}<img src="{{ product.image.url }}" alt="" width="52" height="52" style="object-fit:cover;vertical-align:middle;margin-right:10px">{% elif product.image_url %}<img src="{{ product.image_url }}" alt="" width="52" height="52" style="object-fit:cover;vertical-align:middle;margin-right:10px">{% endif %}<strong>{{ product.name }}</strong></td>
+        {% image_sources product.image product.image_url as product_image %}<td>{% if product_image.available %}<img src="{{ product_image.src }}" data-image-fallbacks="{{ product_image.fallbacks }}" alt="" width="52" height="52" style="object-fit:cover;vertical-align:middle;margin-right:10px">{% endif %}<strong>{{ product.name }}</strong></td>
         {% if is_horosco %}<td>{{ product.get_zodiac_sign_display|default:'À classer' }}</td>{% endif %}
         <td>{{ product.price|floatformat:0 }} FCFA</td>
         <td>{{ product.stock }}</td>

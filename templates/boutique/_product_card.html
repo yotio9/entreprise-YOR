@@ -1,7 +1,8 @@
+{% load image_tags %}
 <article class="product-card">
   {% if product.slug %}<a class="product-image" href="{% url 'produit' product.slug %}">{% else %}<div class="product-image">{% endif %}
-    {% if product.image %}<img src="{{ product.image.url }}" alt="{{ product.name }}" loading="lazy">
-    {% elif product.image_url %}<img src="{{ product.image_url }}" alt="{{ product.name }}" loading="lazy">
+    {% image_sources product.image product.image_url as image %}
+    {% if image.available %}<img src="{{ image.src }}" data-image-fallbacks="{{ image.fallbacks }}" alt="{{ product.name }}" loading="lazy">
     {% else %}<div class="image-placeholder"><span>Y</span></div>{% endif %}
     {% if product.is_featured %}<span class="image-tag">SÉLECTION</span>{% endif %}
   {% if product.slug %}</a>{% else %}</div>{% endif %}
