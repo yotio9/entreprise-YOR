@@ -40,9 +40,9 @@ class YorwaniUserAdmin(UserAdmin):
 
 @admin.register(Product, site=owner_admin_site)
 class ProductAdmin(admin.ModelAdmin):
-	list_display = ('name', 'category', 'zodiac_sign', 'color', 'price', 'source_url', 'source_price_limit', 'stock', 'is_active', 'is_featured')
+	list_display = ('name', 'sku', 'category', 'zodiac_sign', 'color', 'price', 'source_url', 'source_price_limit', 'stock', 'is_active', 'is_featured')
 	list_filter = ('category', 'zodiac_sign', 'color', 'is_active', 'is_featured')
-	search_fields = ('name', 'description')
+	search_fields = ('name', 'sku', 'description')
 	inlines = (ProductImageInline,)
 	prepopulated_fields = {'slug': ('name',)}
 

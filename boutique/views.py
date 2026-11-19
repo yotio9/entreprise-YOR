@@ -934,6 +934,17 @@ def product_delete(request, product_id):
 
 @admin_required
 @require_POST
+def toggle_product_visibility(request, product_id):
+	product = get_object_or_404(Product, pk=product_id)
+	product.is_active = not product.is_active
+	product.save(update_fields=('is_active', 'updated_at'))
+	message = 'Article masqué du site.' if not product.is_active else 'Article de nouveau visible sur le site.'
+	messages.success(request, message)
+	return redirect('admin_articles')
+
+
+@admin_required
+@require_POST
 def product_image_delete(request, image_id):
 	image = get_object_or_404(ProductImage, pk=image_id)
 	product_id = image.product_id

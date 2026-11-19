@@ -67,12 +67,13 @@ class ProductForm(forms.ModelForm):
     class Meta:
         model = Product
         fields = (
-            'category', 'name', 'zodiac_sign', 'description', 'material', 'color', 'size_guide', 'care_instructions',
+            'category', 'sku', 'name', 'zodiac_sign', 'description', 'material', 'color', 'size_guide', 'care_instructions',
             'price', 'compare_at_price', 'sizes', 'stock', 'image', 'image_url', 'source_url', 'source_price_limit',
             'is_featured', 'is_active',
         )
         labels = {
             'category': 'Collection',
+            'sku': 'SKU (optionnel)',
             'name': 'Nom de l’article',
             'zodiac_sign': 'Signe astrologique (collection Horosco)',
             'description': 'Description',
@@ -106,6 +107,9 @@ class ProductForm(forms.ModelForm):
         if isinstance(value, str):
             return [size.strip().upper() for size in value.split(',') if size.strip()]
         return value or []
+
+    def clean_sku(self):
+        return (self.cleaned_data.get('sku') or '').strip().upper() or None
 
 
 class CategoryForm(forms.ModelForm):

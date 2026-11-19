@@ -57,6 +57,7 @@ class Product(models.Model):
 		PISCES = 'pisces', 'Poissons'
 
 	category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name='products')
+	sku = models.CharField(max_length=80, unique=True, null=True, blank=True)
 	name = models.CharField(max_length=160)
 	slug = models.SlugField(max_length=180, unique=True, blank=True)
 	zodiac_sign = models.CharField(max_length=12, choices=ZodiacSign.choices, blank=True)
@@ -82,6 +83,7 @@ class Product(models.Model):
 		ordering = ['-is_featured', '-created_at']
 
 	def save(self, *args, **kwargs):
+		self.sku = (self.sku or '').strip().upper() or None
 		if not self.slug:
 			base_slug = slugify(self.name) or uuid.uuid4().hex[:8]
 			self.slug = base_slug
@@ -105,6 +107,161 @@ class ProductImage(models.Model):
 
 	def __str__(self):
 		return f'Image de {self.product.name}'
+
+
+class CatalogImportBatch(models.Model):
+	class Status(models.TextChoices):
+		APPLYING = 'applying', 'En cours'
+		COMPLETED = 'completed', 'Completed'
+		PARTIAL = 'partial', 'Partiel'
+
+	fingerprint = models.CharField(max_length=64, unique=True)
+	source_filename = models.CharField(max_length=255)
+	status = models.CharField(max_length=12, choices=Status.choices, default=Status.APPLYING)
+	created_at = models.DateTimeField(auto_now_add=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		ordering = ['-created_at']
+
+	def __str__(self):
+		return f'Import catalogue {self.source_filename} ({self.status})'
+
+
+class CatalogImportRow(models.Model):
+	class Status(models.TextChoices):
+		PENDING = 'pending', 'En attente'
+		RUNNING = 'running', 'En cours'
+		CREATED = 'created', 'Created'
+		SKIPPED = 'skipped', 'Skipped'
+		ERROR = 'error', 'Erreur'
+
+	batch = models.ForeignKey(CatalogImportBatch, on_delete=models.CASCADE, related_name='rows')
+	row_number = models.PositiveIntegerField()
+	product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True, related_name='catalog_import_rows')
+	sku = models.CharField(max_length=80, blank=True)
+	product_name = models.CharField(max_length=160, blank=True)
+	publication_requested = models.BooleanField(default=False)
+	category_created = models.BooleanField(default=False)
+	status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
+	message = models.TextField(blank=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		ordering = ['row_number']
+		constraints = [
+			models.UniqueConstraint(fields=('batch', 'row_number'), name='unique_catalog_import_batch_row'),
+		]
+
+	def __str__(self):
+		return f'{self.batch.source_filename} ligne {self.row_number}: {self.status}'
+
+
+class ProductChangeBatch(models.Model):
+	fingerprint = models.CharField(max_length=64, unique=True)
+	operation = models.CharField(max_length=32)
+	status = models.CharField(max_length=12, default='applied')
+	details = models.JSONField(default=dict, blank=True)
+	created_at = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		ordering = ['-created_at']
+
+	def __str__(self):
+		return f'{self.operation} {self.fingerprint[:12]}'
+
+
+class ProductChangeLog(models.Model):
+	class TargetType(models.TextChoices):
+		PRODUCT = 'product', 'Product'
+		CATEGORY = 'category', 'Category'
+
+	batch = models.ForeignKey(ProductChangeBatch, on_delete=models.PROTECT, related_name='changes')
+	target_type = models.CharField(max_length=8, choices=TargetType.choices)
+	target_id_snapshot = models.PositiveBigIntegerField()
+	label_snapshot = models.CharField(max_length=160)
+	sku_snapshot = models.CharField(max_length=80, blank=True)
+	product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True, related_name='change_logs')
+	category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='change_logs')
+	before = models.JSONField(default=dict)
+	after = models.JSONField(default=dict)
+	created_at = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		ordering = ['id']
+		constraints = [
+			models.UniqueConstraint(
+				fields=('batch', 'target_type', 'target_id_snapshot'),
+				name='unique_product_change_target_per_batch',
+			),
+		]
+
+	def __str__(self):
+		return f'{self.batch.operation}: {self.label_snapshot}'
+
+
+class OrderChangeBatch(models.Model):
+	fingerprint = models.CharField(max_length=64, unique=True)
+	operation = models.CharField(max_length=16)
+	status = models.CharField(max_length=12, default='applied')
+	details = models.JSONField(default=dict, blank=True)
+	created_at = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		ordering = ['-created_at']
+
+	def __str__(self):
+		return f'{self.operation} {self.fingerprint[:12]}'
+
+
+class OrderChangeLog(models.Model):
+	batch = models.ForeignKey(OrderChangeBatch, on_delete=models.PROTECT, related_name='changes')
+	order = models.ForeignKey('Order', on_delete=models.PROTECT, related_name='change_logs')
+	reference_snapshot = models.CharField(max_length=20)
+	before = models.JSONField(default=dict)
+	after = models.JSONField(default=dict)
+	created_at = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		ordering = ['id']
+		constraints = [
+			models.UniqueConstraint(fields=('batch', 'order'), name='unique_order_change_per_batch'),
+		]
+
+	def __str__(self):
+		return f'{self.batch.operation}: {self.reference_snapshot}'
+
+
+class CustomerChangeBatch(models.Model):
+	fingerprint = models.CharField(max_length=64, unique=True)
+	operation = models.CharField(max_length=16)
+	status = models.CharField(max_length=12, default='applied')
+	details = models.JSONField(default=dict, blank=True)
+	created_at = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		ordering = ['-created_at']
+
+	def __str__(self):
+		return f'{self.operation} {self.fingerprint[:12]}'
+
+
+class CustomerChangeLog(models.Model):
+	batch = models.ForeignKey(CustomerChangeBatch, on_delete=models.PROTECT, related_name='changes')
+	customer = models.ForeignKey('User', on_delete=models.PROTECT, related_name='change_logs')
+	customer_id_snapshot = models.PositiveBigIntegerField()
+	before = models.JSONField(default=dict)
+	after = models.JSONField(default=dict)
+	created_at = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		ordering = ['id']
+		constraints = [
+			models.UniqueConstraint(fields=('batch', 'customer'), name='unique_customer_change_per_batch'),
+		]
+
+	def __str__(self):
+		return f'{self.batch.operation}: customer {self.customer_id_snapshot}'
 
 
 def generate_order_reference():

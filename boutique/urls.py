@@ -44,6 +44,7 @@ urlpatterns = [
 	path('maison/retours/<int:return_id>/', views.admin_return_edit, name='admin_retour_modifier'),
 	path('maison/articles/nouveau/', views.product_create, name='admin_article_nouveau'),
 	path('maison/articles/<int:product_id>/modifier/', views.product_edit, name='admin_article_modifier'),
+	path('maison/articles/<int:product_id>/visibilite/', views.toggle_product_visibility, name='admin_article_visibilite'),
 	path('maison/articles/<int:product_id>/supprimer/', views.product_delete, name='admin_article_supprimer'),
 	path('maison/images/<int:image_id>/supprimer/', views.product_image_delete, name='admin_image_supprimer'),
 	path('maison/commandes/', views.admin_orders, name='admin_commandes'),

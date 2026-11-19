@@ -1,93 +1,42 @@
 # Yorwani
 
-Boutique Django pour la maison de mode Yorwani. Le projet utilise SQLite, des templates Django et Pillow pour les images téléversées.
+Boutique en ligne Django hébergée sur Render. PostgreSQL et le stockage des images de production sont fournis par Supabase. Neon n'est pas utilisé.
 
-## Démarrage local (Windows PowerShell)
+## Architecture
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-python manage.py migrate
-python manage.py seed_store
-python manage.py createsuperuser
-python manage.py runserver
-```
+Consulter [la documentation d'architecture](docs/architecture.md) pour les modèles, relations, permissions, commandes existantes, variables attendues et limites de vérification de la production.
 
-Ouvrir `http://127.0.0.1:8000`. L’espace propriétaire est sur `/maison/` et l’administration Django est sur `/admin/`. Les deux sont réservés au superutilisateur créé avec `createsuperuser`.
+Le dépôt utilise actuellement `requirements.txt` et `pip`. `uv` n'est pas encore configuré (`pyproject.toml` et `uv.lock` absents).
 
-Première installation :
+## Développement local
+
+Le projet exige un `DATABASE_URL` PostgreSQL. Avant de lancer Django, configurer un fichier `.env` local privé avec une base de développement Supabase (ou un environnement de test isolé) et les autres variables nécessaires. Ne jamais utiliser des identifiants de production dans un fichier partagé ou committé.
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-python manage.py migrate
-python manage.py seed_store
+python manage.py runserver
+```
+
+Créer un superutilisateur dans une base de développement si nécessaire :
+
+```powershell
 python manage.py createsuperuser
 ```
 
-La commande `seed_store` ajoute des catégories et pièces d’exemple, que le propriétaire peut modifier ou supprimer. Les images d’exemple sont chargées depuis Unsplash ; les photos définitives se téléversent depuis la fiche article.
+N'exécuter `migrate` que sur une base de développement choisie explicitement. Ne pas lancer `seed_store` sur la production : cette commande ajoute des données de démonstration.
 
-## Logo et configuration
+## Administration
 
-Le logo n’est pas fourni avec le projet. Définir `BRAND_LOGO_URL` avec une URL accessible ou remplacer le texte Yorwani dans `templates/boutique/base.html`. Le fichier local `.env` est chargé automatiquement et ignoré par Git. Pour Gmail, renseigne `EMAIL_HOST_USER` avec l’adresse Gmail de la boutique, `EMAIL_HOST_PASSWORD` avec son mot de passe d’application Google, et `DEFAULT_FROM_EMAIL` avec cette même adresse. `EMAIL_HOST`, le port 587 et TLS sont déjà configurés. Active la validation en deux étapes du compte Google puis crée un mot de passe d’application dans ses paramètres de sécurité ; utilise ce code dans `.env`, jamais le mot de passe habituel. Redémarre le serveur après modification. Les e-mails partent au client (`Order.customer_email`), pas à l’adresse expéditrice.
+Les visiteurs consultent le catalogue et commandent avec un compte. Le tableau propriétaire se trouve sous `/maison/` et l'admin Django sous `/admin/`; les deux sont réservés aux superutilisateurs.
 
-```powershell
-$env:DJANGO_SECRET_KEY = python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
-$env:DJANGO_DEBUG = "1"
-$env:DJANGO_ALLOWED_HOSTS = "localhost,127.0.0.1"
-$env:BRAND_LOGO_URL = "https://votre-domaine/logo.png"
-```
+## Import du catalogue
 
-`WAVE_MERCHANT_NUMBER` vaut par défaut `0171373056`. `WAVE_QR_IMAGE` peut pointer vers l’image du QR marchand. En l’absence d’identifiants API Wave fournis, la boutique crée une commande et affiche le numéro, le QR facultatif et le montant à transférer. Le paiement reste en attente ; le propriétaire le confirme après vérification réelle dans Wave. Aucun transfert ni reçu n’est simulé.
+L'import CSV en aperçu et application contrôlée est décrit dans [docs/catalog-import.md](docs/catalog-import.md). Les produits importés restent en brouillon.
 
-## E-mails de commande
+## Déploiement
 
-À la création de commande, un accusé de réception est envoyé automatiquement au client. Il précise que le paiement Wave reste à vérifier et que la livraison est estimée sous 5 jours après confirmation du paiement. Quand le propriétaire confirme le transfert dans l’administration, un second e-mail confirme la commande et rappelle le délai estimé. En développement (`DEBUG=1`), les messages sont imprimés dans le terminal et ne sont pas expédiés. Pour l’envoi réel, configurer un fournisseur SMTP avec `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` et une adresse `DEFAULT_FROM_EMAIL` autorisée par ce fournisseur. Pour Gmail, utiliser un mot de passe d’application, jamais le mot de passe habituel du compte. Les variables d’environnement ne sont pas chargées automatiquement depuis `.env`.
+Render construit le service avec `pip install -r requirements.txt`, collecte les fichiers statiques et démarre Django avec Gunicorn. Le `startCommand` actuel lance aussi les migrations Django. Toute mise à jour du code qui déclenche un déploiement peut donc exécuter les migrations présentes; examiner ce comportement avant de déployer.
 
-## Modèle de données
-
-- `User` : compte client avec téléphone à 10 chiffres et rôle propriétaire via les permissions superutilisateur Django.
-- `Category` : catégories du catalogue.
-- `Product` : prix, tailles JSON, stock, matière, entretien et image principale.
-- `ProductImage` : galerie d’images associées à un article.
-- `Order` : client, coordonnées de livraison, référence, montants et statuts commande/paiement.
-- `OrderItem` : nom, taille, quantité et prix unitaire figés au moment de la commande.
-
-Le checkout propose `Wave maintenant` ou `Paiement à la livraison`. Le premier reste en attente jusqu’à vérification du transfert par le propriétaire ; le second est marqué « à régler à la livraison ». Dans les deux cas, la méthode choisie figure sur la commande et dans l’e-mail. Pour le paiement à la livraison, l’admin confirme l’encaissement après remise au client ; cette action débloque le reçu et l’e-mail de paiement reçu.
-
-## Parcours et accès
-
-Les visiteurs parcourent la collection et ajoutent au panier ; un compte est requis avant de valider la commande. Téléphone, ville et adresse sont obligatoires. Le stock est revalidé et réservé côté serveur à la création de la commande. Le reçu n’est accessible qu’au client propriétaire de la commande, après confirmation du paiement par un superutilisateur.
-
-L’administration publique du catalogue n’existe pas : les écritures passent par le dashboard propriétaire ou l’admin Django personnalisé, tous deux réservés aux superutilisateurs. Les mutations utilisent POST avec protection CSRF.
-
-## Vérifications
-
-```powershell
-python manage.py check
-python manage.py test boutique
-python manage.py makemigrations --check --dry-run
-```
-
-Pour une mise en production, utiliser HTTPS, une clé secrète dédiée, `DJANGO_DEBUG=0`, une liste `DJANGO_ALLOWED_HOSTS` exacte, et un serveur de fichiers adapté aux médias. La configuration active la redirection HTTPS et HSTS lorsque `DEBUG` est désactivé. SQLite convient au démarrage local ; un déploiement à fort trafic mérite une base PostgreSQL.# entreprise-YOR
-
-
-
-## PostgreSQL distant et worker Jumia (simulation)
-
-Le projet utilise PostgreSQL via `DATABASE_URL` dans `.env` et refuse de d?marrer si cette variable est absente. SQLite n?est plus utilis?. Les migrations et le transfert initial sont d?crits dans `DEPLOYMENT_NOTES.md`.
-
-    python manage.py migrate
-    python manage.py migrate_sqlite_to_postgres --confirm-target-empty
-
-Le transfert vérifie les nombres de lignes et les empreintes de données ; il ne copie pas les fichiers media/.
-
-Le worker Jumia est désactivé par défaut et strictement en lecture seule. Il exige PostgreSQL, une commande payée et confirmée, un lien Jumia autorisé et un plafond fournisseur saisi dans la fiche produit. CAPTCHA, connexion, prix ou variante non vérifiables entraînent une revue humaine. Il ne crée aucun panier et n’achète rien.
-
-    python manage.py queue_jumia_orders --order-ref YOR-REFERENCE --dry-run
-    python manage.py queue_jumia_orders --order-ref YOR-REFERENCE
-    $env:JUMIA_AGENT_ENABLED = "1"
-    $env:JUMIA_AGENT_MODE = "simulation"
-    python manage.py run_jumia_agent --once
-
-Voir DEPLOYMENT_NOTES.md pour Neon, Docker/Caddy, budget, sauvegardes, restauration et les étapes de mise en ligne. Aucun compte ni hébergement n’est provisionné par ce projet.
+La configuration de production des variables secrètes est gérée dans Render. Le dépôt ne donne pas accès à leurs valeurs. Ne jamais committer `.env`, les clés S3 ou la chaîne `DATABASE_URL`.

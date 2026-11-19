@@ -897,6 +897,38 @@ class StorefrontTests(TestCase):
         edit_form = ProductForm(instance=product)
         self.assertEqual(edit_form['sizes'].value(), 'S, M, XL')
 
+    def test_admin_can_hide_and_restore_product_without_deleting_it(self):
+        self.client.force_login(self.admin)
+        visibility_url = reverse('admin_article_visibilite', args=[self.product.pk])
+
+        hide_response = self.client.post(visibility_url)
+        self.assertRedirects(hide_response, reverse('admin_articles'))
+        self.product.refresh_from_db()
+        self.assertFalse(self.product.is_active)
+        self.assertTrue(Product.objects.filter(pk=self.product.pk).exists())
+        self.assertEqual(self.client.get(reverse('produit', args=[self.product.slug])).status_code, 404)
+
+        restore_response = self.client.post(visibility_url)
+        self.assertRedirects(restore_response, reverse('admin_articles'))
+        self.product.refresh_from_db()
+        self.assertTrue(self.product.is_active)
+        self.assertEqual(self.client.get(reverse('produit', args=[self.product.slug])).status_code, 200)
+
+    def test_product_list_has_one_click_visibility_button_and_keeps_delete_confirmation(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('admin_articles'))
+        self.assertContains(response, reverse('admin_article_visibilite', args=[self.product.pk]))
+        self.assertContains(response, 'class="visibility-toggle"')
+        self.assertContains(response, 'Masquer')
+        self.assertContains(response, 'confirm(\'Supprimer cet article du catalogue ?\')')
+
+    def test_customer_cannot_toggle_product_visibility(self):
+        self.client.force_login(self.customer)
+        response = self.client.post(reverse('admin_article_visibilite', args=[self.product.pk]))
+        self.assertEqual(response.status_code, 302)
+        self.product.refresh_from_db()
+        self.assertTrue(self.product.is_active)
+
     def test_registration_requires_and_saves_a_ten_digit_phone(self):
         registration_page = self.client.get(reverse('inscription'))
         self.assertContains(registration_page, 'name="phone"')
